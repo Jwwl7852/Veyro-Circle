@@ -64,6 +64,9 @@ test("agreement offers separate account storage and a standalone print document"
   assert.match(page, /document\.createElement\("iframe"\)/);
   assert.match(page, /printWindow\.print\(\)/);
   assert.match(page, /12 måneder/);
+  assert.match(page, /crypto\.randomUUID\(\)/);
+  assert.match(page, /Ticket:/);
+  assert.match(page, /formatAgreementDate/);
 });
 
 test("forwards progress semantics to the primitive", async () => {

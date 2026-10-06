@@ -215,6 +215,9 @@ button:focus-visible,a:focus-visible { outline:3px solid #819eb6; outline-offset
 .price-summary small,.price-summary p { grid-column:1/-1; font-size:.8125rem; color:#546b7d; line-height:1.6; }
 .request-summary { border:1px solid var(--border); border-radius:8px; overflow:hidden; }
 .request-summary .loan-row { border:0; }
+.loan-kind { margin-bottom:.15rem; color:#607583; font-size:.68rem; font-weight:800; letter-spacing:.07em; text-transform:uppercase; }
+.loan-ticket-meta { display:flex; flex-wrap:wrap; gap:.3rem 1rem; margin-top:.5rem; color:#40576a; font-size:.76rem; }
+.loan-ticket-meta span { overflow-wrap:anywhere; }
 .request-price { display:flex; justify-content:space-between; gap:1rem; padding:.85rem 1rem; border-top:1px solid var(--border); background:#f3f6f8; font-size:.875rem; }
 .request-summary>p { padding:1rem; font-size:.875rem; overflow-wrap:anywhere; }
 .agreement-open { display:flex; width:100%; align-items:center; gap:.65rem; border-top:1px solid var(--border); padding:.9rem 1rem; color:#006F88; font-size:.875rem; font-weight:750; text-align:left; }
