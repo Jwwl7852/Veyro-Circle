@@ -5,6 +5,8 @@
 [build.environment]
   NODE_VERSION = "22"
   # Firebase client settings are supplied by Netlify at build time.
+  # Firebase web API keys are public client configuration, not server secrets.
+  SECRETS_SCAN_OMIT_KEYS = "NEXT_PUBLIC_FIREBASE_API_KEY"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
