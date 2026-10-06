@@ -49,6 +49,7 @@ export function CircleAuthScreen({ lang, setLang }: { lang: Lang; setLang: (lang
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [repeat, setRepeat] = useState("");
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -57,8 +58,8 @@ export function CircleAuthScreen({ lang, setLang }: { lang: Lang; setLang: (lang
   async function submit(event: React.FormEvent) {
     event.preventDefault(); setError(""); setMessage("");
     if (!auth) { setError(da ? "Firebase er ikke konfigureret." : "Firebase är inte konfigurerat."); return; }
-    if (mode === "register" && (name.trim().length < 2 || password.length < 8 || password !== repeat)) {
-      setError(da ? "Udfyld navn, og brug to ens adgangskoder på mindst 8 tegn." : "Fyll i namn och använd två likadana lösenord med minst 8 tecken."); return;
+    if (mode === "register" && (name.trim().length < 2 || password.length < 8 || password !== repeat || !acceptedTerms)) {
+      setError(da ? "Udfyld navn, brug to ens adgangskoder på mindst 8 tegn, og accepter betingelserne." : "Fyll i namn, använd två likadana lösenord med minst 8 tecken och acceptera villkoren."); return;
     }
     setBusy(true);
     try {
@@ -86,6 +87,7 @@ export function CircleAuthScreen({ lang, setLang }: { lang: Lang; setLang: (lang
         <label className="field-label">E-mail<input type="email" autoComplete="email" required value={email} onChange={e=>setEmail(e.target.value)} /></label>
         {mode !== "reset" && <label className="field-label">{da ? "Adgangskode" : "Lösenord"}<input type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} required minLength={8} value={password} onChange={e=>setPassword(e.target.value)} /></label>}
         {mode === "register" && <label className="field-label">{da ? "Gentag adgangskode" : "Upprepa lösenord"}<input type="password" autoComplete="new-password" required minLength={8} value={repeat} onChange={e=>setRepeat(e.target.value)} /></label>}
+        {mode === "register" && <label className="terms-check"><input type="checkbox" required checked={acceptedTerms} onChange={e=>setAcceptedTerms(e.target.checked)} /><span>{da ? "Jeg accepterer " : "Jag accepterar "}<a href="/legal#terms" target="_blank">{da ? "handelsbetingelserne" : "köpvillkoren"}</a>{da ? " og har læst " : " och har läst "}<a href="/legal#privacy" target="_blank">{da ? "privatlivspolitikken" : "integritetspolicyn"}</a>.</span></label>}
         {error && <p className="auth-error" role="alert"><AlertCircle size={17} />{error}</p>}
         {message && <p className="auth-success" role="status"><CheckCircle2 size={17} />{message}</p>}
         <Button type="submit" disabled={busy} className="auth-submit">{busy ? <LoaderCircle className="animate-spin" size={18} /> : mode === "login" ? <LogIn size={18} /> : mode === "register" ? <UserPlus size={18} /> : <KeyRound size={18} />}{mode === "login" ? (da ? "Log ind" : "Logga in") : mode === "register" ? (da ? "Opret konto" : "Skapa konto") : (da ? "Send nulstillingslink" : "Skicka återställningslänk")}</Button>
@@ -94,6 +96,7 @@ export function CircleAuthScreen({ lang, setLang }: { lang: Lang; setLang: (lang
         {mode !== "login" && <button onClick={()=>{setMode("login");setError("");setMessage("");}}>{da ? "Tilbage til login" : "Tillbaka till inloggning"}</button>}
         {mode === "login" && <><button onClick={()=>setMode("reset")}>{da ? "Glemt adgangskode?" : "Glömt lösenordet?"}</button><button onClick={()=>setMode("register")}>{da ? "Opret ny konto" : "Skapa nytt konto"}</button></>}
       </div>
+      <p className="auth-legal"><a href="/legal#privacy">{da ? "Privatliv og GDPR" : "Integritet och GDPR"}</a><span>·</span><a href="/legal#terms">{da ? "Handelsbetingelser" : "Köpvillkor"}</a></p>
     </section>
   </main>;
 }
