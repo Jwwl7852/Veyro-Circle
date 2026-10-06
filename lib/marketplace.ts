@@ -13,7 +13,7 @@ export function canCreateListing(activeListings: number, plan: ListingPlan) {
   return activeListings < listingLimit(plan);
 }
 export type Place = { id: string; country: Country; postcode: string; city: string; lat: number; lon: number };
-export type Profile = { name: string; email: string; street: string; place: Place; taxAcknowledgement?: TaxAcknowledgement };
+export type Profile = { name: string; email: string; phone: string; street: string; place: Place; taxAcknowledgement?: TaxAcknowledgement };
 export const places: Place[] = postalRecords.map((row, index) => ({
   id: String(index), country: row[0] as Country, postcode: String(row[1]),
   city: String(row[2]), lat: Number(row[3]), lon: Number(row[4]),
@@ -66,7 +66,8 @@ export function todayLocal() {
   const d = new Date();
   return [d.getFullYear(), String(d.getMonth() + 1).padStart(2, "0"), String(d.getDate()).padStart(2, "0")].join("-");
 }
-export function validProfile(name: string, street: string, place: Place | null) {
+export function validProfile(name: string, street: string, place: Place | null, phone: string) {
   return name.trim().length >= 2 && name.trim().length <= 100 && street.trim().length >= 4 &&
-    street.trim().length <= 200 && /\d/.test(street) && Boolean(place && places.some(p=>p.id === place.id));
+    street.trim().length <= 200 && /\d/.test(street) && /^[+()\d .-]{8,24}$/.test(phone.trim()) &&
+    Boolean(place && places.some(p=>p.id === place.id));
 }
