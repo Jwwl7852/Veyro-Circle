@@ -1,12 +1,13 @@
 "use client";
 import { useId, useState } from "react";
+import { BadgeCheck } from "lucide-react";
 import { Combobox, ComboboxInput, ComboboxContent, ComboboxList, ComboboxItem, ComboboxEmpty } from "@/components/ui/combobox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { TaxGuidance } from "@/components/tax-guidance";
 import { hasReadTaxGuidance, TAX_GUIDANCE_VERSION } from "@/lib/tax-guidance";
-import { type Country, type Lang, type Place, type Profile, searchPlaces, validProfile } from "@/lib/marketplace";
+import { type Country, type Lang, type Place, type Profile, searchPlaces, validAddress, validProfile } from "@/lib/marketplace";
 
 export function CountrySelect({ value, onChange, lang }: { value: Country | ""; onChange: (c: Country) => void; lang: Lang }) {
   return <Select value={value} onValueChange={v=>onChange(v as Country)}>
@@ -51,6 +52,7 @@ export function ProfileForm({ profile, lang, onSave, authenticatedEmail }: { pro
   const [resetSent, setResetSent] = useState(false);
   const [taxRead, setTaxRead] = useState(hasReadTaxGuidance(profile?.taxAcknowledgement, profile?.place.country || "DK"));
   const taxCheckId = useId();
+  const addressIsValid = Boolean(country && place?.country === country && validAddress(street, place));
   return <form className="profile-form" onSubmit={e=>{
     e.preventDefault();
     if (!/^\S+@\S+\.\S+$/.test(email.trim())) {
@@ -69,6 +71,7 @@ export function ProfileForm({ profile, lang, onSave, authenticatedEmail }: { pro
   }}>
     <h2>{profile ? (da ? "Konto og oplysninger" : "Konto och uppgifter") : (da ? "Opret konto og profil" : "Skapa konto och profil")}</h2>
     <p>{da ? "Din e-mail er dit login, så du behøver ikke et separat brugernavn. Adresse, postnummer og by er obligatoriske." : "Din e-postadress är din inloggning, så du behöver inget separat användarnamn. Adress, postnummer och ort är obligatoriska."}</p>
+    <div className="profile-fields-grid">
     <label className="field-label">E-mail *<input type="email" autoComplete="email" required readOnly={Boolean(authenticatedEmail)} maxLength={254} value={email} onChange={e=>setEmail(e.target.value)} placeholder={da ? "navn@eksempel.dk" : "namn@exempel.se"} /></label>
     {!authenticatedEmail && !profile && <><div className="account-passwords"><label className="field-label">{da ? "Adgangskode" : "Lösenord"} *<input type="password" autoComplete="new-password" required minLength={8} maxLength={128} value={password} onChange={e=>setPassword(e.target.value)} /><small>{da ? "Mindst 8 tegn. Gem den aldrig i en besked eller annonce." : "Minst 8 tecken. Spara det aldrig i ett meddelande eller en annons."}</small></label><label className="field-label">{da ? "Gentag adgangskode" : "Upprepa lösenord"} *<input type="password" autoComplete="new-password" required minLength={8} maxLength={128} value={passwordRepeat} onChange={e=>setPasswordRepeat(e.target.value)} /></label></div><div className="password-help"><button type="button" onClick={()=>{if (!/^\S+@\S+\.\S+$/.test(email.trim())) { setError(da ? "Indtast først den e-mailadresse, som hører til kontoen." : "Ange först e-postadressen som hör till kontot."); setResetSent(false); return; } setError(""); setResetSent(true);}}>{da ? "Glemt adgangskode?" : "Glömt lösenordet?"}</button>{resetSent && <p role="status">{da ? `Vi har simuleret et nulstillingslink til ${email.trim()}.` : `Vi har simulerat en återställningslänk till ${email.trim()}.`}</p>}</div></>}
     <label className="field-label">{da ? "Fulde navn" : "Fullständigt namn"} *<input autoComplete="name" required minLength={2} maxLength={100} value={name} onChange={e=>setName(e.target.value)} /></label>
@@ -76,7 +79,8 @@ export function ProfileForm({ profile, lang, onSave, authenticatedEmail }: { pro
     <div className="field-label">{da ? "Dit profilland · vælg ét land" : "Ditt profilland · välj ett land"} *<CountrySelect lang={lang} value={country} onChange={c=>{if(c !== country) {setCountry(c);setPlace(null);setTaxRead(false);}}} /><small>{da ? "Din profil hører til enten Danmark eller Sverige. Adresse og by skal ligge i det valgte land." : "Din profil tillhör antingen Danmark eller Sverige. Adressen och orten ska ligga i det valda landet."}</small></div>
     <label className="field-label">{da ? "Adresse · vej og husnummer" : "Adress · gata och husnummer"} *<input autoComplete="street-address" required minLength={4} maxLength={200} value={street} onChange={e=>setStreet(e.target.value)} placeholder={da ? "Vejnavn 12, 1. tv." : "Gatunamn 12, lgh 1001"} /></label>
     {country && <PlacePicker key={country} lang={lang} country={country} value={place} onChange={setPlace} label={da ? "Postnummer og by *" : "Postnummer och ort *"} />}
-    {place && <div className="address-summary"><span>{da ? "Postnummer" : "Postnummer"}<b>{place.postcode}</b></span><span>{da ? "By" : "Ort"}<b>{place.city}</b></span></div>}
+    </div>
+    {addressIsValid && <div className="address-verified" role="status"><BadgeCheck size={20} /><span><b>{da ? "Adresseoplysninger kontrolleret" : "Adressuppgifter kontrollerade"}</b>{da ? `${place!.postcode} ${place!.city} findes i det danske/svenske adressegrundlag, og vej/adresse indeholder husnummer.` : `${place!.postcode} ${place!.city} finns i det danska/svenska adressunderlaget och gatuadressen innehåller husnummer.`}</span></div>}
     <p className="privacy-note">{da ? "Din vej og dit husnummer vises ikke på annoncer eller i søgeresultater. Afstand er et estimat mellem postområder, ikke mellem adresser." : "Din gata och ditt husnummer visas inte i annonser eller sökresultat. Avståndet är en uppskattning mellan postområden, inte mellan adresser."}</p>
     {country ? <><TaxGuidance lang={lang} country={country} />
     <div className={`tax-acknowledgement ${taxRead ? "is-checked" : ""}`}>
