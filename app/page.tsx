@@ -29,7 +29,7 @@ import {
 } from "@/components/ui/alert-dialog";
 
 type Lang = "da" | "sv";
-type Tab = "home" | "items" | "requests" | "profile";
+type Tab = "home" | "items" | "requests" | "profile" | "subscription";
 type AgreementSignature = { dataUrl: string; signedAt: string };
 type Loan = { id: string; item: Listing; from: string; to: string; days: number; total: number; deposit: number; message: string; borrower: Profile; borrowerUid?: string; lenderUid?: string; borrowerSignature?: AgreementSignature; lenderSignature?: AgreementSignature };
 type Listing = {
@@ -455,7 +455,8 @@ export default function HomePage() {
           {tab === "items" && <ItemsView lang={lang} profile={profile} listings={listings.filter(item => item.owned)} plan={listingPlan} onAdd={openAdd} onEdit={openEdit} onDelete={setPendingDelete} />}
           {tab === "requests" && <RequestsView t={t} loans={loans} lang={lang} loadError={agreementsError} onChat={() => toast.info(lang === "da" ? "Beskeder åbner her" : "Meddelanden öppnas här")} onAgreement={setAgreementLoan} />}
           {tab === "profile" && <ProfileView t={t} lang={lang} setLang={setLang} profile={profile} authenticatedEmail={user?.email || undefined} onSave={saveProfile}
-            onLogout={logout} plan={listingPlan} used={listings.filter(item => item.owned).length} onUpgrade={() => setShowUpgrade(true)} onManage={() => billing("portal")} />}
+            onLogout={logout} onSubscription={() => setTab("subscription")} />}
+          {tab === "subscription" && <SubscriptionView lang={lang} plan={listingPlan} used={listings.filter(item => item.owned).length} onBack={() => setTab("profile")} onUpgrade={() => setShowUpgrade(true)} onManage={() => billing("portal")} />}
         </section>
 
         <aside className="hidden xl:block">
@@ -693,24 +694,21 @@ function LoanRow({ title, owner, status, statusClass, icon: Icon, onChat, chatLa
   return <article className="loan-row"><div className="flex size-16 shrink-0 items-center justify-center rounded-xl bg-[#eef0f8]"><Icon size={31} className="text-[#008EAC]" /></div><div className="min-w-0 flex-1"><h3 className="truncate font-semibold">{title}</h3><p className="mt-1 text-sm text-[#73778b]">{owner} · {dates}</p><span className={`loan-status ${statusClass}`}>{status}</span></div><button onClick={onChat} className="chat-button"><MessageCircle size={18} /><span className="hidden sm:inline">{chatLabel}</span></button></article>;
 }
 
-function ProfileView({ t, lang, setLang, profile, authenticatedEmail, onSave, onLogout, plan, used, onUpgrade, onManage }: {
+function ProfileView({ t, lang, setLang, profile, authenticatedEmail, onSave, onLogout, onSubscription }: {
   t: typeof copy.da; lang: Lang; setLang: (lang: Lang) => void; profile: Profile | null; onSave: (p: Profile)=>void;
   authenticatedEmail?: string; onLogout: () => void;
-  plan: ListingPlan; used: number; onUpgrade: () => void; onManage: () => void;
+  onSubscription: () => void;
 }) {
-  const limit = listingLimit(plan);
   return <div className="content-panel">
-    <div className="profile-head"><span className="profile-avatar"><CircleUserRound size={32} /></span><div className="min-w-0 flex-1"><p className="eyebrow">{lang === "da" ? "Din konto" : "Ditt konto"}</p><h1 className="page-title">{profile?.name || (lang === "da" ? "Log ind eller opret konto" : "Logga in eller skapa konto")}</h1>{profile && <><p className="mt-2 text-sm">{profile.email}</p><p className="mt-1 text-sm">{profile.place.postcode} {profile.place.city} · {profile.place.country}</p></>}</div>{profile && <Button type="button" variant="outline" className="logout-button" onClick={onLogout}><LogOut size={17} />{lang === "da" ? "Log ud" : "Logga ut"}</Button>}</div>
+    <div className="profile-head"><span className="profile-avatar"><CircleUserRound size={32} /></span><div className="min-w-0 flex-1"><p className="eyebrow">{lang === "da" ? "Din konto" : "Ditt konto"}</p><h1 className="page-title">{profile?.name || (lang === "da" ? "Log ind eller opret konto" : "Logga in eller skapa konto")}</h1>{profile && <><p className="mt-2 text-sm">{profile.email}</p><p className="mt-1 text-sm">{profile.place.postcode} {profile.place.city} · {profile.place.country}</p></>}</div>{profile && <div className="profile-head-actions"><Button type="button" variant="outline" onClick={onSubscription}><Crown size={17} />{lang === "da" ? "Mit abonnement" : "Min prenumeration"}</Button><Button type="button" variant="outline" className="logout-button" onClick={onLogout}><LogOut size={17} />{lang === "da" ? "Log ud" : "Logga ut"}</Button></div>}</div>
     <ProfileForm profile={profile} lang={lang} authenticatedEmail={authenticatedEmail} onSave={onSave} />
-    {profile && <section className={`membership-card ${plan === "plus" ? "is-plus" : ""}`}>
-      <div className="membership-top"><div className="membership-icon">{plan === "plus" ? <Crown size={22} /> : <PackagePlus size={22} />}</div><div><p className="eyebrow">{lang === "da" ? "Dit abonnement" : "Din prenumeration"}</p><h2>{plan === "plus" ? "Veyro Circle Plus" : (lang === "da" ? "Gratis medlemskab" : "Gratis medlemskap")}</h2></div><span className="plan-badge">{plan === "plus" ? (lang === "da" ? "Aktiv" : "Aktiv") : "0 kr."}</span></div>
-      <div className="membership-usage"><div><span>{lang === "da" ? "Aktive ting" : "Aktiva saker"}</span><b>{used} {lang === "da" ? "af" : "av"} {limit}</b></div><Progress value={Math.min(100, used / limit * 100)} /></div>
-      <p>{plan === "plus" ? (lang === "da" ? "Du kan have op til 20 aktive ting. Redigering og sletning tæller ikke som nye opslag." : "Du kan ha upp till 20 aktiva saker. Redigering och borttagning räknas inte som nya annonser.") : (lang === "da" ? `Du har ${Math.max(0, FREE_LISTING_LIMIT - used)} gratis opslag tilbage. Plus giver plads til ${PLUS_LISTING_LIMIT} aktive ting.` : `Du har ${Math.max(0, FREE_LISTING_LIMIT - used)} gratisannonser kvar. Plus ger plats för ${PLUS_LISTING_LIMIT} aktiva saker.`)}</p>
-      {plan === "free" && <Button type="button" onClick={onUpgrade} className="membership-cta"><Crown size={17} />{lang === "da" ? "Se Veyro Circle Plus" : "Se Veyro Circle Plus"}</Button>}
-      {plan === "plus" && <Button type="button" onClick={onManage} variant="outline" className="membership-cta manage-subscription">{lang === "da" ? "Administrer abonnement" : "Hantera prenumeration"}</Button>}
-    </section>}
     <section className="mt-5 rounded-xl border border-[#e0e3ec] bg-white p-5 sm:p-6"><h2 className="text-lg font-bold">{t.language}</h2><div className="mt-4 grid grid-cols-2 gap-3"><button className={`setting-choice ${lang === "da" ? "active" : ""}`} onClick={() => setLang("da")}>🇩🇰 Dansk{lang === "da" && <Check size={17} />}</button><button className={`setting-choice ${lang === "sv" ? "active" : ""}`} onClick={() => setLang("sv")}>🇸🇪 Svenska{lang === "sv" && <Check size={17} />}</button></div></section>
   </div>;
+}
+
+function SubscriptionView({ lang, plan, used, onBack, onUpgrade, onManage }: { lang: Lang; plan: ListingPlan; used: number; onBack: () => void; onUpgrade: () => void; onManage: () => void }) {
+  const limit = listingLimit(plan);
+  return <div className="content-panel subscription-page"><button type="button" className="text-link" onClick={onBack}>← {lang === "da" ? "Tilbage til konto" : "Tillbaka till konto"}</button><div><p className="eyebrow">Veyro Circle</p><h1 className="page-title">{lang === "da" ? "Mit abonnement" : "Min prenumeration"}</h1></div><section className={`membership-card ${plan === "plus" ? "is-plus" : ""}`}><div className="membership-top"><div className="membership-icon">{plan === "plus" ? <Crown size={22} /> : <PackagePlus size={22} />}</div><div><p className="eyebrow">{lang === "da" ? "Dit abonnement" : "Din prenumeration"}</p><h2>{plan === "plus" ? "Veyro Circle Plus" : (lang === "da" ? "Gratis medlemskab" : "Gratis medlemskap")}</h2></div><span className="plan-badge">{plan === "plus" ? "Aktiv" : "0 kr."}</span></div><div className="membership-usage"><div><span>{lang === "da" ? "Aktive ting" : "Aktiva saker"}</span><b>{used} {lang === "da" ? "af" : "av"} {limit}</b></div><Progress value={Math.min(100, used / limit * 100)} /></div><p>{plan === "plus" ? (lang === "da" ? "Du kan have op til 20 aktive ting. Redigering og sletning tæller ikke som nye opslag." : "Du kan ha upp till 20 aktiva saker. Redigering och borttagning räknas inte som nya annonser.") : (lang === "da" ? `Du har ${Math.max(0, FREE_LISTING_LIMIT - used)} gratis opslag tilbage. Plus giver plads til ${PLUS_LISTING_LIMIT} aktive ting.` : `Du har ${Math.max(0, FREE_LISTING_LIMIT - used)} gratisannonser kvar. Plus ger plats för ${PLUS_LISTING_LIMIT} aktiva saker.`)}</p>{plan === "free" ? <Button type="button" onClick={onUpgrade} className="membership-cta"><Crown size={17} />Se Veyro Circle Plus</Button> : <Button type="button" onClick={onManage} variant="outline" className="membership-cta manage-subscription">{lang === "da" ? "Administrer abonnement" : "Hantera prenumeration"}</Button>}</section></div>;
 }
 
 function ItemsView({ lang, profile, listings, plan, onAdd, onEdit, onDelete }: { lang: Lang; profile: Profile | null; listings: Listing[]; plan: ListingPlan; onAdd: () => void; onEdit: (item: Listing) => void; onDelete: (item: Listing) => void }) {
