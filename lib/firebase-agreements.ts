@@ -1,7 +1,6 @@
 "use client";
 
-import { collection, doc, getDocs, query, serverTimestamp, setDoc, Timestamp, updateDoc, where } from "firebase/firestore";
-import { db } from "@/lib/firebase-client";
+import { auth } from "@/lib/firebase-client";
 import type { Country, Place, Profile } from "@/lib/marketplace";
 
 export type StoredSignature = { dataUrl: string; signedAt: string };
@@ -24,24 +23,24 @@ export type StoredAgreement = {
 };
 
 export async function saveCircleAgreement(agreement: StoredAgreement) {
-  if (!db) throw new Error("Firebase er ikke konfigureret.");
+  if (!auth?.currentUser) throw new Error("Du skal være logget ind.");
   const clean = JSON.parse(JSON.stringify(agreement)) as StoredAgreement;
-  const retentionUntil = new Date();
-  retentionUntil.setMonth(retentionUntil.getMonth() + 12);
-  await setDoc(doc(db, "agreements", agreement.id), { ...clean, createdAt: serverTimestamp(), updatedAt: serverTimestamp(), retentionUntil:Timestamp.fromDate(retentionUntil) });
+  const response = await fetch("/api/agreements",{method:"POST",headers:{"content-type":"application/json",authorization:`Bearer ${await auth.currentUser.getIdToken()}`},body:JSON.stringify({agreement:clean})});
+  const data = await response.json() as {error?:string};
+  if (!response.ok) throw new Error(data.error || "Aftalen kunne ikke gemmes.");
 }
 
 export async function loadCircleAgreements(uid: string): Promise<StoredAgreement[]> {
-  if (!db) return [];
-  const snapshot = await getDocs(query(collection(db, "agreements"), where("participantUids", "array-contains", uid)));
-  const now = Date.now();
-  return snapshot.docs.filter(item => {
-    const until = item.data().retentionUntil;
-    return !until?.toDate || until.toDate().getTime() >= now;
-  }).map(item => item.data() as StoredAgreement).sort((a,b) => b.id.localeCompare(a.id));
+  if (!auth?.currentUser || auth.currentUser.uid !== uid) return [];
+  const response = await fetch("/api/agreements",{headers:{authorization:`Bearer ${await auth.currentUser.getIdToken()}`}});
+  const data = await response.json() as {agreements?:StoredAgreement[];error?:string};
+  if (!response.ok) throw new Error(data.error || "Aftalerne kunne ikke hentes.");
+  return (data.agreements ?? []).sort((a,b) => b.id.localeCompare(a.id));
 }
 
 export async function saveCircleSignature(id: string, role: "borrower" | "lender", signature: StoredSignature) {
-  if (!db) throw new Error("Firebase er ikke konfigureret.");
-  await updateDoc(doc(db, "agreements", id), { [role === "borrower" ? "borrowerSignature" : "lenderSignature"]: signature, updatedAt: serverTimestamp() });
+  if (!auth?.currentUser) throw new Error("Du skal være logget ind.");
+  const response = await fetch("/api/agreements",{method:"PATCH",headers:{"content-type":"application/json",authorization:`Bearer ${await auth.currentUser.getIdToken()}`},body:JSON.stringify({id,role,signature})});
+  const data = await response.json() as {error?:string};
+  if (!response.ok) throw new Error(data.error || "Underskriften kunne ikke gemmes.");
 }
