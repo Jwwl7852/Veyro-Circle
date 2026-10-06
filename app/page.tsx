@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { CircleAuthScreen, EmailVerificationScreen, FirebaseSetupNotice, circleSignOut, useCircleAuth } from "@/components/circle-auth";
 import { loadCircleProfile, saveCircleProfile } from "@/lib/firebase-profile";
 import { loadCircleAgreements, saveCircleAgreement, saveCircleSignature, type StoredAgreement } from "@/lib/firebase-agreements";
+import { sendCircleMessage, subscribeToCircleMessages, type CircleMessage } from "@/lib/firebase-messages";
 import { openBilling } from "@/lib/billing-client";
 import { PlacePicker, CountrySelect, ProfileForm } from "@/components/marketplace-fields";
 import { type Place, type Profile, type Country, type ListingPlan, distanceKm, defaultPlace, seedPlace, parseDailyPrice, money, dayCount, todayLocal, canCreateListing, listingLimit, FREE_LISTING_LIMIT, PLUS_LISTING_LIMIT } from "@/lib/marketplace";
@@ -15,7 +16,7 @@ import {
   SprayCan, Heart, Home, ImagePlus, Languages, MapPin, MessageCircle,
   PackagePlus, PartyPopper, Pencil, Search, ShieldCheck, Sparkles, Star, TentTree,
   Trash2, Truck, Utensils, Wrench, X, Crown, FileSignature, Printer, LockKeyhole,
-  LogOut,
+  LogOut, LoaderCircle, Send,
 } from "lucide-react";
 import { toast, Toaster } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -136,6 +137,7 @@ export default function HomePage() {
   const [depositInput, setDepositInput] = useState("");
   const [loans, setLoans] = useState<Loan[]>([]);
   const [agreementLoan, setAgreementLoan] = useState<Loan | null>(null);
+  const [chatLoan, setChatLoan] = useState<Loan | null>(null);
   const [agreementsError, setAgreementsError] = useState(false);
   const [formError, setFormError] = useState("");
   const [newDescription, setNewDescription] = useState("");
@@ -453,7 +455,7 @@ export default function HomePage() {
           </>}
 
           {tab === "items" && <ItemsView lang={lang} profile={profile} listings={listings.filter(item => item.owned)} plan={listingPlan} onAdd={openAdd} onEdit={openEdit} onDelete={setPendingDelete} />}
-          {tab === "requests" && <RequestsView t={t} loans={loans} lang={lang} loadError={agreementsError} onChat={() => toast.info(lang === "da" ? "Beskeder åbner her" : "Meddelanden öppnas här")} onAgreement={setAgreementLoan} />}
+          {tab === "requests" && <RequestsView t={t} loans={loans} lang={lang} loadError={agreementsError} onChat={setChatLoan} onAgreement={setAgreementLoan} />}
           {tab === "profile" && <ProfileView lang={lang} profile={profile} authenticatedEmail={user?.email || undefined} onSave={saveProfile}
             onLogout={logout} onSubscription={() => setTab("subscription")} />}
           {tab === "subscription" && <SubscriptionView lang={lang} plan={listingPlan} used={listings.filter(item => item.owned).length} onBack={() => setTab("profile")} onUpgrade={() => setShowUpgrade(true)} onManage={() => billing("portal")} />}
@@ -541,6 +543,8 @@ export default function HomePage() {
           <div className="agreement-actions no-print"><Button variant="outline" onClick={() => window.print()}><Printer size={17} />{lang === "da" ? "Udskriv / gem som PDF" : "Skriv ut / spara som PDF"}</Button><span>{agreementLoan.borrowerSignature && agreementLoan.lenderSignature ? (lang === "da" ? "Aftalen er underskrevet af begge og ligger under Mine lån" : "Avtalet är signerat av båda och finns under Mina lån") : (lang === "da" ? "Afventer begge underskrifter" : "Väntar på båda signaturerna")}</span></div>
         </DialogContent>}
       </Dialog>
+
+      <ChatDialog loan={chatLoan} userUid={user?.uid || ""} lang={lang} onClose={() => setChatLoan(null)} />
 
       <Dialog open={showAdd} onOpenChange={open => { setShowAdd(open); if (!open) resetItemForm(); }}>
         <DialogContent className="max-h-[92vh] overflow-y-auto rounded-xl sm:max-w-[560px]">
@@ -638,30 +642,44 @@ function MobileNav({ icon: Icon, label, active, badge, onClick }: { icon: typeof
   return <button onClick={onClick} className={`mobile-nav-item ${active ? "active" : ""}`}><span className="relative"><Icon size={22} />{badge && <i />}</span><small>{label}</small></button>;
 }
 
-function RequestsView({ t, loans, lang, loadError, onChat, onAgreement }: { t: typeof copy.da; loans: Loan[]; lang: Lang; loadError: boolean; onChat: () => void; onAgreement: (loan: Loan) => void }) {
-  const demoAgreement: Loan = {
-    id: "VC-DEMO-2026", item: initialListings[1], from: "2026-09-12", to: "2026-09-13", days: 2,
-    total: initialListings[1].dailyPrice * 2, deposit: 50000, message: "Traileren afleveres rengjort og senest kl. 18.00.",
-    borrower: { name: "Demo Bruger", email: "demo@example.dk", phone: "+45 12 34 56 78", street: "Eksempelvej 12", place: seedPlace("Jystrup", "DK") },
-  };
+function RequestsView({ t, loans, lang, loadError, onChat, onAgreement }: { t: typeof copy.da; loans: Loan[]; lang: Lang; loadError: boolean; onChat: (loan: Loan) => void; onAgreement: (loan: Loan) => void }) {
   return <div className="content-panel">
     <div className="mb-7"><p className="eyebrow">Veyro Circle</p><h1 className="page-title">{t.requests}</h1></div>
     {loadError && <p className="agreements-load-note" role="status">{lang === "da" ? "Dine gemte aftaler kan ikke vises lige nu. Firebase-adgangen skal opdateres, men resten af Circle virker fortsat." : "Dina sparade avtal kan inte visas just nu. Firebase-åtkomsten behöver uppdateras, men resten av Circle fungerar fortfarande."}</p>}
-    <p className="demo-note">{lang === "da" ? "Testforespørgsler gemmes i denne session. Ingen besked sendes til en rigtig ejer." : "Testförfrågningar sparas i denna session. Inget meddelande skickas till en riktig ägare."}</p>
-    <button type="button" className="agreement-demo-card" onClick={() => onAgreement(demoAgreement)}>
-      <span><FileSignature size={25} /></span><div><small>{lang === "da" ? "Klik her – kræver ingen profil" : "Klicka här – kräver ingen profil"}</small><b>{lang === "da" ? "Se eksempel på automatisk lejeaftale" : "Se exempel på automatiskt hyresavtal"}</b><p>{lang === "da" ? "Prøv underskrifterne, og se papir-/PDF-visningen." : "Prova signaturerna och se pappers-/PDF-vyn."}</p></div><strong>{lang === "da" ? "Åbn" : "Öppna"} →</strong>
-    </button>
     <div className="mt-6 space-y-4">
       {loans.map((loan, i)=><article key={i} className="request-summary">
-        <LoanRow title={loan.item.name} owner={loan.item.owner} status={t.awaiting} statusClass="waiting" icon={loan.item.icon} onChat={onChat} chatLabel={t.chat} dates={loan.from + " → " + loan.to} />
+        <LoanRow title={loan.item.name} owner={loan.item.owner} status={t.awaiting} statusClass="waiting" icon={loan.item.icon} onChat={() => onChat(loan)} chatLabel={t.chat} dates={loan.from + " → " + loan.to} />
         <div className="request-price"><span>{loan.days} {lang === "da" ? "kalenderdage" : "kalenderdagar"}</span><b>{loan.total === 0 ? t.free : money(loan.total, loan.item.country, lang)}</b></div>
         {loan.message && <p>{loan.message}</p>}
         <button type="button" className="agreement-open" onClick={() => onAgreement(loan)}><FileSignature size={18} /><span>{lang === "da" ? "Åbn automatisk lejeaftale" : "Öppna automatiskt hyresavtal"}</span><b>{loan.borrowerSignature && loan.lenderSignature ? (lang === "da" ? "Underskrevet" : "Signerat") : (lang === "da" ? "Klar til underskrift" : "Klar för signering")}</b></button>
       </article>)}
-      <LoanRow title="Brenderup trailer · demo" owner="Sofie" status={t.approved} statusClass="approved" icon={Truck} onChat={onChat} chatLabel={t.chat} />
-      <LoanRow title="Højtryksrenser · demo" owner="Amalie" status={t.activeLoan} statusClass="active-loan" icon={SprayCan} onChat={onChat} chatLabel={t.chat} />
+      {!loans.length && !loadError && <div className="my-items-empty"><MessageCircle size={28} /><p>{lang === "da" ? "Du har endnu ingen låne- eller lejeaftaler." : "Du har ännu inga låne- eller hyresavtal."}</p></div>}
     </div>
   </div>;
+}
+
+function ChatDialog({ loan, userUid, lang, onClose }: { loan: Loan | null; userUid: string; lang: Lang; onClose: () => void }) {
+  const [messages, setMessages] = useState<CircleMessage[]>([]);
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const endRef = useRef<HTMLDivElement>(null);
+  const da = lang === "da";
+  useEffect(() => {
+    if (!loan || !userUid || !loan.borrowerUid || !loan.lenderUid) return;
+    return subscribeToCircleMessages(loan.id, setMessages, () => setError(da ? "Samtalen kunne ikke hentes fra Firebase." : "Konversationen kunde inte hämtas från Firebase."));
+  }, [da, loan, userUid]);
+  useEffect(() => { endRef.current?.scrollIntoView({behavior:"smooth"}); }, [messages]);
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    if (!loan || !userUid || !text.trim()) return;
+    setBusy(true); setError("");
+    try { await sendCircleMessage(loan.id, userUid, text); setText(""); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : (da ? "Beskeden kunne ikke sendes." : "Meddelandet kunde inte skickas.")); }
+    finally { setBusy(false); }
+  }
+  const available = Boolean(loan?.borrowerUid && loan?.lenderUid && userUid);
+  return <Dialog open={Boolean(loan)} onOpenChange={open => !open && onClose()}>{loan && <DialogContent className="chat-dialog rounded-xl sm:max-w-[560px]"><DialogHeader><DialogTitle>{da ? "Samtale om" : "Konversation om"} {loan.item.name}</DialogTitle><DialogDescription>{loan.item.owner} · {loan.from} – {loan.to}</DialogDescription></DialogHeader>{available ? <><div className="chat-thread" aria-live="polite">{messages.length ? messages.map(message => <div key={message.id} className={`chat-message ${message.senderUid === userUid ? "mine" : "theirs"}`}><p>{message.text}</p><time>{message.createdAt ? new Intl.DateTimeFormat(da ? "da-DK" : "sv-SE", {dateStyle:"short",timeStyle:"short"}).format(message.createdAt) : (da ? "Sender…" : "Skickar…")}</time></div>) : <p className="chat-empty">{da ? "Ingen beskeder endnu. Skriv den første besked om aftalen." : "Inga meddelanden ännu. Skriv det första meddelandet om avtalet."}</p>}<div ref={endRef} /></div>{error && <p className="auth-error" role="alert">{error}</p>}<form className="chat-compose" onSubmit={submit}><label htmlFor="circle-chat-message" className="sr-only">{da ? "Skriv besked" : "Skriv meddelande"}</label><textarea id="circle-chat-message" rows={3} maxLength={2000} value={text} onChange={event=>setText(event.target.value)} placeholder={da ? "Skriv en besked…" : "Skriv ett meddelande…"} /><Button type="submit" disabled={busy || !text.trim()}>{busy ? <LoaderCircle className="animate-spin" size={18} /> : <Send size={18} />}{da ? "Send" : "Skicka"}</Button></form></> : <p className="agreements-load-note">{da ? "Denne aftale er ikke knyttet til to brugerkonti, så der kan ikke oprettes en samtale." : "Det här avtalet är inte kopplat till två användarkonton, så en konversation kan inte skapas."}</p>}</DialogContent>}</Dialog>;
 }
 
 function AgreementParty({ title, name, street, postcode, city, phone }: { title: string; name: string; street: string; postcode: string; city: string; phone: string }) {
