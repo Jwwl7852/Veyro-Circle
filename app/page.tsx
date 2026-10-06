@@ -1,0 +1,681 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { CircleAuthScreen, EmailVerificationScreen, FirebaseSetupNotice, circleSignOut, useCircleAuth } from "@/components/circle-auth";
+import { loadCircleProfile, saveCircleProfile } from "@/lib/firebase-profile";
+import { openBilling } from "@/lib/billing-client";
+import { PlacePicker, CountrySelect, ProfileForm } from "@/components/marketplace-fields";
+import { type Place, type Profile, type Country, type ListingPlan, distanceKm, defaultPlace, seedPlace, parseDailyPrice, money, dayCount, todayLocal, canCreateListing, listingLimit, FREE_LISTING_LIMIT, PLUS_LISTING_LIMIT } from "@/lib/marketplace";
+import { compressListingImage, formatImageSize, MAX_LISTING_IMAGES, type CompressedListingImage } from "@/lib/image-compression";
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import {
+  Bell, Bike, CalendarDays, Camera, Check, ChevronDown, CircleUserRound, Drill,
+  SprayCan, Heart, Home, ImagePlus, Languages, MapPin, MessageCircle,
+  PackagePlus, PartyPopper, Pencil, Search, ShieldCheck, Sparkles, Star, TentTree,
+  Trash2, Truck, Utensils, Wrench, X, Crown, FileSignature, Printer, LockKeyhole,
+  BadgeCheck, LogOut,
+} from "lucide-react";
+import { toast, Toaster } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
+import {
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+
+type Lang = "da" | "sv";
+type Tab = "home" | "search" | "requests" | "profile";
+type Loan = { id: string; item: Listing; from: string; to: string; days: number; total: number; deposit: number; message: string; borrower: Profile; borrowerSignedAt?: string; lenderSignedAt?: string };
+type Listing = {
+  id: number; name: string; owner: string; city: string; country: "DK" | "SE";
+  distance: number; category: string; icon: typeof Drill; color: string;
+  description: string; rating: number; availability: string;
+  place: Place; dailyPrice: number; photos?: CompressedListingImage[]; owned?: boolean;
+};
+
+const categories = [
+  { id: "all", da: "Alt", sv: "Allt", icon: Sparkles },
+  { id: "transport", da: "Transport", sv: "Transport", icon: Truck },
+  { id: "tools", da: "Værktøj", sv: "Verktyg", icon: Wrench },
+  { id: "garden", da: "Have", sv: "Trädgård", icon: SprayCan },
+  { id: "leisure", da: "Fritid", sv: "Fritid", icon: TentTree },
+  { id: "party", da: "Fest", sv: "Fest", icon: PartyPopper },
+  { id: "kitchen", da: "Køkken", sv: "Kök", icon: Utensils },
+  { id: "bike", da: "Cykler", sv: "Cyklar", icon: Bike },
+];
+
+const categoryColors: Record<string, string> = {
+  tools: "from-[#f7d87b] to-[#e8ad35]",
+  transport: "from-[#96c9ed] to-[#62a7de]",
+  garden: "from-[#91d9bc] to-[#4bb993]",
+  leisure: "from-[#81c6c8] to-[#3ca3ab]",
+  bike: "from-[#acbff0] to-[#819fdf]",
+  party: "from-[#efb99d] to-[#db956f]",
+  kitchen: "from-[#e7c5a2] to-[#cfaa80]",
+};
+
+const initialListings: Listing[] = [
+  { id: 1, place: seedPlace("Jystrup", "DK"), dailyPrice: 0, name: "Boremaskine med bits", owner: "Mikkel", city: "Jystrup", country: "DK", distance: 1.2, category: "tools", icon: Drill, color: categoryColors.tools, description: "18V boremaskine med et godt udvalg af bits og to batterier. Afleveres opladet.", rating: 4.9, availability: "Ledig fra i dag" },
+  { id: 2, place: seedPlace("Ringsted", "DK"), dailyPrice: 5000, name: "Brenderup trailer", owner: "Sofie", city: "Ringsted", country: "DK", distance: 6.8, category: "transport", icon: Truck, color: categoryColors.transport, description: "750 kg trailer med presenning. 13-polet stik. Husk eget næsehjulslås ved længere lån.", rating: 5, availability: "Ledig i weekenden" },
+  { id: 3, place: seedPlace("Køge", "DK"), dailyPrice: 3500, name: "Højtryksrenser", owner: "Amalie", city: "Køge", country: "DK", distance: 18, category: "garden", icon: SprayCan, color: categoryColors.garden, description: "God til terrasse og cykler. Terrasserenser og 8 meter slange følger med.", rating: 4.8, availability: "Ledig fra torsdag" },
+  { id: 4, place: seedPlace("Roskilde", "DK"), dailyPrice: 0, name: "Familietelt · 4 personer", owner: "Jonas", city: "Roskilde", country: "DK", distance: 24, category: "leisure", icon: TentTree, color: categoryColors.leisure, description: "Vandtæt tunneltelt med to sovekabiner. Nem opsætning og alle pløkker er med.", rating: 4.9, availability: "Ledig næste uge" },
+  { id: 5, place: seedPlace("Malmö", "SE"), dailyPrice: 7500, name: "Lastcykel", owner: "Elin", city: "Malmö", country: "SE", distance: 47, category: "bike", icon: Bike, color: categoryColors.bike, description: "El-lastcykel med plads til to børn. Hjelme kan lånes med efter aftale.", rating: 4.7, availability: "Ledig søndag" },
+  { id: 6, place: seedPlace("Lund", "SE"), dailyPrice: 0, name: "Kageopsats · 3 etager", owner: "Astrid", city: "Lund", country: "SE", distance: 58, category: "party", icon: PartyPopper, color: categoryColors.party, description: "Hvid porcelænsopsats til fest og fødselsdag. Skal vaskes i hånden.", rating: 5, availability: "Ledig fra fredag" },
+];
+
+const copy = {
+  da: {
+    search: "Hvad vil du låne?", nearby: "Begge lande", denmark: "Danmark", sweden: "Sverige",
+    heroKicker: "Del mere i dit lokalområde", heroTitle: "Brug mere. Køb mindre.",
+    heroText: "Lån gratis eller lej til en overkommelig pris. Find ting i nærheden, og del det, du ikke bruger hver dag.",
+    heroButton: "Find noget at låne", addItem: "Tilføj en ting", popular: "Ting i dit søgeområde",
+    viewAll: "Se alle", free: "Gratis", borrow: "Spørg om at låne", navHome: "Hjem",
+    navSearch: "Søg", navRequests: "Mine lån", navProfile: "Konto", results: "ting fundet",
+    noResults: "Ingen ting matcher din søgning endnu.", addTitle: "Hvad vil du dele?",
+    addDescription: "Vælg gratis udlån eller angiv en pris pr. dag. Kun by og postnummer vises.", itemName: "Navn på tingen",
+    city: "By", description: "Kort beskrivelse", publish: "Opret annonce", photo: "Tilføj billeder",
+    requestTitle: "Vælg hvornår du vil låne", from: "Fra", to: "Til", message: "Besked til ejeren",
+    send: "Send forespørgsel", trust: "Trygt at dele",
+    trustText: "Din adresse vises ikke i søgeresultater. Aftal altid afhentning og aflevering med ejeren.",
+    requests: "Mine lån", outgoing: "Sendte", incoming: "Modtagne", approved: "Godkendt",
+    awaiting: "Afventer svar", activeLoan: "Aktivt lån", chat: "Skriv besked", impact: "Din effekt",
+    loans: "gennemførte lån", saved: "kr. sparet i fællesskabet", itemsShared: "ting delt",
+    memberSince: "Medlem siden 2026", verify: "Demoprofil", country: "Land", language: "Sprog",
+  },
+  sv: {
+    search: "Vad vill du låna?", nearby: "Båda länderna", denmark: "Danmark", sweden: "Sverige",
+    heroKicker: "Dela mer i ditt närområde", heroTitle: "Använd mer. Köp mindre.",
+    heroText: "Låna gratis eller hyr till ett överkomligt pris. Hitta saker i närheten och dela det du inte använder varje dag.",
+    heroButton: "Hitta något att låna", addItem: "Lägg till en sak", popular: "Saker i ditt sökområde",
+    viewAll: "Visa alla", free: "Gratis", borrow: "Fråga om att låna", navHome: "Hem",
+    navSearch: "Sök", navRequests: "Mina lån", navProfile: "Konto", results: "saker hittades",
+    noResults: "Inga saker matchar din sökning ännu.", addTitle: "Vad vill du dela?",
+    addDescription: "Välj gratis utlåning eller ange ett pris per dag. Bara ort och postnummer visas.", itemName: "Sakens namn",
+    city: "Ort", description: "Kort beskrivning", publish: "Skapa annons", photo: "Lägg till bilder",
+    requestTitle: "Välj när du vill låna", from: "Från", to: "Till", message: "Meddelande till ägaren",
+    send: "Skicka förfrågan", trust: "Tryggt att dela",
+    trustText: "Din adress visas inte i sökresultat. Kom alltid överens med ägaren om hämtning och återlämning.",
+    requests: "Mina lån", outgoing: "Skickade", incoming: "Mottagna", approved: "Godkänd",
+    awaiting: "Väntar på svar", activeLoan: "Aktivt lån", chat: "Skriv meddelande", impact: "Din effekt",
+    loans: "genomförda lån", saved: "kr sparade i gemenskapen", itemsShared: "saker delade",
+    memberSince: "Medlem sedan 2026", verify: "Demoprofil", country: "Land", language: "Språk",
+  },
+};
+
+export default function HomePage() {
+  const { user, loading: authLoading, configured } = useCircleAuth();
+  const [lang, setLang] = useState<Lang>("da");
+  const [tab, setTab] = useState<Tab>("home");
+  const [country, setCountry] = useState<"ALL" | "DK" | "SE">("ALL");
+  const [category, setCategory] = useState("all");
+  const [query, setQuery] = useState("");
+  const [listings, setListings] = useState(initialListings);
+  const [selected, setSelected] = useState<Listing | null>(null);
+  const [showAdd, setShowAdd] = useState(false);
+  const [showRequest, setShowRequest] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [origin, setOrigin] = useState<Place | null>(defaultPlace);
+  const [radius, setRadius] = useState("50");
+  const [priceFilter, setPriceFilter] = useState("all");
+  const [newCountry, setNewCountry] = useState<Country>("DK");
+  const [newPlace, setNewPlace] = useState<Place | null>(null);
+  const [newCategory, setNewCategory] = useState("tools");
+  const [pricing, setPricing] = useState("free");
+  const [priceInput, setPriceInput] = useState("");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [requestMessage, setRequestMessage] = useState("");
+  const [depositInput, setDepositInput] = useState("");
+  const [loans, setLoans] = useState<Loan[]>([]);
+  const [agreementLoan, setAgreementLoan] = useState<Loan | null>(null);
+  const [identityVerified, setIdentityVerified] = useState(false);
+  const [showIdentityVerification, setShowIdentityVerification] = useState(false);
+  const [formError, setFormError] = useState("");
+  const [newDescription, setNewDescription] = useState("");
+  const [newPhotos, setNewPhotos] = useState<CompressedListingImage[]>([]);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Listing | null>(null);
+  const [isCompressing, setIsCompressing] = useState(false);
+  const [listingPlan, setListingPlan] = useState<ListingPlan>("free");
+  const [showUpgrade, setShowUpgrade] = useState(false);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [billingBusy, setBillingBusy] = useState(false);
+  const requestSent = loans.length > 0;
+  const t = copy[lang];
+  const days = dayCount(from, to);
+  const dateValid = days !== null && from >= todayLocal();
+
+  useEffect(() => {
+    const status = new URLSearchParams(window.location.search).get("checkout");
+    if (status === "success") toast.success(lang === "da" ? "Tak. Stripe behandler dit Circle Plus-abonnement." : "Tack. Stripe behandlar din Circle Plus-prenumeration.");
+    if (status === "cancelled") toast.info(lang === "da" ? "Betalingen blev afbrudt. Der er ikke trukket penge." : "Betalningen avbröts. Inga pengar har dragits.");
+    if (status) history.replaceState({}, "", window.location.pathname);
+  }, [lang]);
+
+  async function billing(action: "checkout" | "portal") {
+    if (!configured || !user) {
+      setListingPlan("plus"); setShowUpgrade(false);
+      toast.info(lang === "da" ? "Plus er kun simuleret, indtil Firebase og Stripe er konfigureret." : "Plus simuleras bara tills Firebase och Stripe har konfigurerats.");
+      return;
+    }
+    setBillingBusy(true);
+    try { await openBilling(user, action); }
+    catch (error) { toast.error(error instanceof Error ? error.message : (lang === "da" ? "Stripe kunne ikke åbnes." : "Stripe kunde inte öppnas.")); setBillingBusy(false); }
+  }
+
+  useEffect(() => {
+    if (!configured || !user?.emailVerified) return;
+    let active = true;
+    // The loading flag intentionally mirrors this external Firestore request.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setProfileLoading(true);
+    loadCircleProfile(user.uid).then(cloud => {
+      if (!active) return;
+      if (cloud) {
+        const next = { name: cloud.name, email: user.email || cloud.email, street: cloud.street, place: cloud.place, taxAcknowledgement: cloud.taxAcknowledgement };
+        setProfile(next); setLang(cloud.preferredLanguage); setOrigin(cloud.place); setNewPlace(cloud.place); setNewCountry(cloud.place.country);
+        setIdentityVerified(cloud.verificationStatus === "verified"); setListingPlan(cloud.subscriptionPlan === "plus" ? "plus" : "free");
+      } else setTab("profile");
+    }).catch(() => toast.error(lang === "da" ? "Profilen kunne ikke hentes fra Firebase." : "Profilen kunde inte hämtas från Firebase."))
+      .finally(() => active && setProfileLoading(false));
+    return () => { active = false; };
+  }, [configured, lang, user?.email, user?.emailVerified, user?.uid]);
+
+  const filtered = useMemo(() => {
+    if (!origin && radius !== "all") return [];
+    const q = query.trim().toLowerCase();
+    return listings.map(item => ({ ...item, distance: origin ? distanceKm(origin, item.place) : NaN })).filter(item =>
+      (country === "ALL" || item.country === country) &&
+      (category === "all" || item.category === category) &&
+      (radius === "all" || item.distance <= Number(radius)) &&
+      (priceFilter === "all" || (priceFilter === "free" ? item.dailyPrice === 0 : item.dailyPrice > 0)) &&
+      (!q || `${item.name} ${item.city} ${item.description}`.toLowerCase().includes(q))
+    ).sort((a,b) => origin ? a.distance - b.distance : a.id - b.id);
+  }, [category, country, listings, query, origin, radius, priceFilter]);
+
+  function resetItemForm() {
+    setEditingId(null); setNewName(""); setNewDescription(""); setNewCategory("tools");
+    setPricing("free"); setPriceInput(""); setNewPhotos([]); setFormError("");
+  }
+
+  function openAdd() {
+    if (!profile) { setTab("profile"); toast.info(lang === "da" ? "Opret først din profil med adresse og by." : "Skapa först din profil med adress och ort."); return; }
+    if (!identityVerified) { setShowIdentityVerification(true); return; }
+    const activeCount = listings.filter(item => item.owned).length;
+    if (!canCreateListing(activeCount, listingPlan)) {
+      if (listingPlan === "free") setShowUpgrade(true);
+      else toast.info(lang === "da" ? "Du har nået grænsen på 20 aktive ting. Slet en ting, før du opretter en ny." : "Du har nått gränsen på 20 aktiva saker. Ta bort en sak innan du skapar en ny.");
+      return;
+    }
+    resetItemForm(); setNewPlace(profile.place); setNewCountry(profile.place.country); setShowAdd(true);
+  }
+
+  function openEdit(item: Listing) {
+    if (!item.owned) return;
+    setSelected(null); setEditingId(item.id); setNewName(item.name); setNewDescription(item.description);
+    setNewCategory(item.category); setNewCountry(item.country); setNewPlace(item.place);
+    setPricing(item.dailyPrice > 0 ? "paid" : "free");
+    setPriceInput(item.dailyPrice > 0 ? String(item.dailyPrice / 100).replace(".", lang === "da" ? "," : ".") : "");
+    setNewPhotos(item.photos || []); setFormError(""); setShowAdd(true);
+  }
+
+  async function saveProfile(next: Profile) {
+    const identityChanged = profile && (profile.name !== next.name || profile.place.country !== next.place.country);
+    setProfile(next); if (identityChanged) setIdentityVerified(false); setOrigin(next.place); setNewPlace(next.place); setNewCountry(next.place.country);
+    if (configured && user) {
+      try { await saveCircleProfile(user.uid, next, lang); toast.success(lang === "da" ? "Profilen er gemt sikkert." : "Profilen har sparats säkert."); }
+      catch { toast.error(lang === "da" ? "Profilen kunne ikke gemmes. Prøv igen." : "Profilen kunde inte sparas. Försök igen."); }
+    } else toast.success(lang === "da" ? "Demoprofil gemt for denne session." : "Demoprofil sparad för denna session.");
+  }
+
+  async function logout() {
+    if (configured) await circleSignOut();
+    setProfile(null); setIdentityVerified(false); setListingPlan("free"); setOrigin(defaultPlace); setTab("profile");
+    toast.success(lang === "da" ? "Du er logget ud." : "Du har loggats ut.");
+  }
+
+  async function addPhotos(files: FileList | null) {
+    if (!files?.length || isCompressing) return;
+    const available = MAX_LISTING_IMAGES - newPhotos.length;
+    if (available <= 0) {
+      setFormError(lang === "da" ? "Du kan højst tilføje 2 billeder." : "Du kan lägga till högst 2 bilder.");
+      return;
+    }
+    const candidates = Array.from(files).slice(0, available);
+    if (files.length > available) {
+      toast.info(lang === "da" ? "Der er kun plads til 2 billeder i alt." : "Det finns bara plats för 2 bilder totalt.");
+    }
+    setIsCompressing(true); setFormError("");
+    const compressed: CompressedListingImage[] = [];
+    for (const file of candidates) {
+      try {
+        compressed.push(await compressListingImage(file));
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : (lang === "da" ? "Billedet kunne ikke tilføjes." : "Bilden kunde inte läggas till."));
+      }
+    }
+    setNewPhotos(current => [...current, ...compressed].slice(0, MAX_LISTING_IMAGES));
+    setIsCompressing(false);
+    if (compressed.length) toast.success(lang === "da" ? "Billedet er komprimeret og klar." : "Bilden är komprimerad och klar.");
+  }
+
+  function publishItem() {
+    const amount = pricing === "free" ? 0 : parseDailyPrice(priceInput);
+    if (!profile || !newName.trim() || !newPlace || newPlace.country !== newCountry || amount === null) {
+      setFormError(lang === "da" ? "Udfyld navn, vælg by, og indtast en positiv dagspris med højst 2 decimaler, hvis du vælger betaling." : "Fyll i namn, välj ort och ange ett positivt dagspris med högst 2 decimaler om du väljer betalning.");
+      return;
+    }
+    const activeCount = listings.filter(item => item.owned).length;
+    if (editingId === null && !canCreateListing(activeCount, listingPlan)) {
+      setShowAdd(false);
+      if (listingPlan === "free") setShowUpgrade(true);
+      else toast.info(lang === "da" ? "Du kan højst have 20 aktive ting." : "Du kan ha högst 20 aktiva saker.");
+      return;
+    }
+    const update = {
+      name: newName.trim(), owner: profile.name, city: newPlace.city,
+      country: newCountry, place: newPlace, dailyPrice: amount, category: newCategory,
+      icon: categories.find(c=>c.id === newCategory)?.icon || PackagePlus,
+      color: categoryColors[newCategory] || categoryColors.tools,
+      description: newDescription || (lang === "da" ? "Til udlån efter aftale." : "För utlåning enligt överenskommelse."),
+      photos: newPhotos, owned: true,
+    };
+    if (editingId !== null) {
+      setListings(items => items.map(item => item.id === editingId ? { ...item, ...update } : item));
+    } else {
+      setListings(items => [{ id: Date.now(), distance: 0, rating: 0, availability: "Ledig nu", ...update }, ...items]);
+    }
+    setOrigin(newPlace); setCountry("ALL"); setCategory("all"); setPriceFilter("all"); setQuery("");
+    setShowAdd(false); resetItemForm(); setTab(editingId !== null ? "profile" : "search");
+    toast.success(editingId !== null
+      ? (lang === "da" ? "Dine ændringer er gemt." : "Dina ändringar har sparats.")
+      : (lang === "da" ? "Annoncen er oprettet i prøveversionen." : "Annonsen har skapats i demoversionen."));
+  }
+
+  function deleteItem(item: Listing) {
+    if (!item.owned) return;
+    setListings(items => items.filter(current => current.id !== item.id));
+    setLoans(items => items.filter(loan => loan.item.id !== item.id));
+    if (selected?.id === item.id) setSelected(null);
+    setPendingDelete(null);
+    toast.success(lang === "da" ? "Tingen er slettet." : "Saken har tagits bort.");
+  }
+
+  function openRequest() {
+    if (!profile) { setSelected(null); setTab("profile"); toast.info(lang === "da" ? "Opret først din profil med adresse og by." : "Skapa först din profil med adress och ort."); return; }
+    if (!identityVerified) { setSelected(null); setShowIdentityVerification(true); return; }
+    const today = todayLocal();
+    setFrom(today); setTo(today); setFormError(""); setRequestMessage(""); setDepositInput(""); setShowRequest(true);
+  }
+
+  function sendRequest() {
+    if (!selected || !profile || !dateValid || days === null) {
+      setFormError(lang === "da" ? "Vælg gyldige datoer. Slutdato må ikke ligge før startdato, og startdato må ikke være i fortiden." : "Välj giltiga datum. Slutdatum får inte vara före startdatum och startdatum får inte vara i det förflutna."); return;
+    }
+    const deposit = depositInput.trim() ? parseDailyPrice(depositInput) : 0;
+    if (deposit === null) { setFormError(lang === "da" ? "Depositum skal være et gyldigt positivt beløb." : "Depositionen måste vara ett giltigt positivt belopp."); return; }
+    setLoans(items=>[{id: `VC-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`, item: selected, from, to, days, total: selected.dailyPrice * days, deposit, message: requestMessage.trim(), borrower: profile}, ...items]);
+    setShowRequest(false); setSelected(null); setTab("requests");
+    toast.success(lang === "da" ? "Testforespørgsel gemt — ingen betaling trukket." : "Testförfrågan sparad — ingen betalning dragen.");
+  }
+
+  function signAgreement(loan: Loan, role: "borrower" | "lender") {
+    if (loan.id !== "VC-DEMO-2026" && !identityVerified) { setAgreementLoan(null); setShowIdentityVerification(true); return; }
+    const timestamp = new Date().toISOString();
+    const updated = { ...loan, [role === "borrower" ? "borrowerSignedAt" : "lenderSignedAt"]: timestamp };
+    setLoans(items => items.map(item => item.id === loan.id ? updated : item));
+    setAgreementLoan(updated);
+    toast.success(lang === "da" ? "Underskriften er registreret i prøveversionen." : "Underskriften har registrerats i demoversionen.");
+  }
+
+  if (authLoading || (configured && user?.emailVerified && profileLoading)) return <main className="auth-page"><img className="auth-brand-logo" src="/branding/veyro-systems-logo.png" alt="Veyro Systems" /><p>{lang === "da" ? "Indlæser Veyro Circle…" : "Laddar Veyro Circle…"}</p></main>;
+  if (configured && !user) return <CircleAuthScreen lang={lang} setLang={setLang} />;
+  if (configured && user && !user.emailVerified) return <EmailVerificationScreen user={user} lang={lang} />;
+
+  return (
+    <main className="min-h-screen bg-[#F2F6F8] text-[#172936]">
+      <Toaster position="top-center" richColors />
+      <div className="demo-banner">{lang === "da" ? "Prøveversion · eksempelannoncer · ændringer nulstilles ved genindlæsning · ingen automatisk betaling" : "Demoversion · exempelannonser · ändringar återställs vid omladdning · ingen automatisk betalning"}</div>
+      <header className="sticky top-0 z-40 border-b border-[#174354] bg-[#031725] text-white">
+        <div className="mx-auto flex h-20 max-w-[1440px] items-center gap-4 px-4 sm:px-6 lg:px-10">
+          <button className="brand-lockup" onClick={() => setTab("home")} aria-label={lang === "da" ? "Veyro Circle hjem" : "Veyro Circle hem"}>
+            <img src="/branding/veyro-systems-logo.png" alt="Veyro Systems" /><span>Circle</span>
+          </button>
+          <div className="relative ml-auto hidden max-w-xl flex-1 md:block">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#666b82]" size={19} />
+            <input aria-label={t.search} value={query} onChange={(e) => { setQuery(e.target.value); setTab("search"); }}
+              placeholder={t.search} className="h-12 w-full rounded-full border border-[#d9deea] bg-[#f7f8fb] pl-12 pr-4 text-[15px] outline-none transition focus:border-[#008EAC] focus:ring-4 focus:ring-[#008EAC]/10" />
+          </div>
+          <div className="ml-auto flex items-center gap-2 md:ml-0">
+            <button className="icon-button" aria-label="Notifikationer"><Bell size={20} /></button>
+            <button className="language-button" onClick={() => setLang(lang === "da" ? "sv" : "da")}>
+              <Languages size={18} /><span>{lang === "da" ? "DA" : "SV"}</span><ChevronDown size={15} />
+            </button>
+            <button className="hidden h-10 items-center gap-2 rounded-full bg-[#172936] px-4 text-sm font-semibold text-white sm:flex" onClick={() => setTab("profile")}>
+              <CircleUserRound size={18} />{profile ? profile.name.split(" ")[0] : (lang === "da" ? "Log ind / opret" : "Logga in / skapa")}
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {!configured && <FirebaseSetupNotice lang={lang} />}
+      <div className="mx-auto grid max-w-[1440px] gap-7 px-4 pb-28 pt-6 sm:px-6 md:pb-10 lg:grid-cols-[220px_minmax(0,1fr)] lg:px-10 xl:grid-cols-[220px_minmax(0,1fr)_260px]">
+        <aside className="hidden lg:block">
+          <div className="sticky top-24 space-y-6">
+            <nav className="space-y-1" aria-label="Hovedmenu">
+              <SideNav icon={Home} label={t.navHome} active={tab === "home"} onClick={() => setTab("home")} />
+              <SideNav icon={Search} label={t.navSearch} active={tab === "search"} onClick={() => setTab("search")} />
+              <SideNav icon={CalendarDays} label={t.navRequests} active={tab === "requests"} badge={requestSent ? "1" : undefined} onClick={() => setTab("requests")} />
+              <SideNav icon={CircleUserRound} label={t.navProfile} active={tab === "profile"} onClick={() => setTab("profile")} />
+            </nav>
+            <Button className="h-12 w-full rounded-xl bg-[#008EAC] text-[15px] font-bold text-white hover:bg-[#006F88]" onClick={openAdd}>
+              <PackagePlus className="mr-2" size={19} />{t.addItem}
+            </Button>
+            <div className="rounded-xl bg-[#16866B] p-5 text-white">
+              <ShieldCheck className="mb-4 text-[#f5bf42]" size={28} />
+              <h3 className="font-bold">{t.trust}</h3>
+              <p className="mt-2 text-sm leading-6 text-white/85">{t.trustText}</p>
+            </div>
+          </div>
+        </aside>
+
+        <section className="min-w-0">
+          <div className="relative mb-5 md:hidden">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#666b82]" size={19} />
+            <input value={query} onChange={(e) => { setQuery(e.target.value); setTab("search"); }} placeholder={t.search}
+              className="h-13 w-full rounded-xl border border-[#d9deea] bg-white pl-12 pr-4 text-base outline-none focus:border-[#008EAC]" />
+          </div>
+
+          {(tab === "home" || tab === "search") && <>
+            {tab === "home" && <section className="hero-card">
+              <img src="/assets/neighbours-sharing.webp" alt="Naboer deler værktøj og trailer" />
+              <div className="hero-overlay" />
+              <div className="relative z-10 max-w-[540px] p-6 text-white sm:p-8 lg:p-10">
+                <span className="hero-kicker"><Sparkles size={15} />{t.heroKicker}</span>
+                <h1>{t.heroTitle}</h1><p>{t.heroText}</p>
+                <div className="mt-6 flex flex-wrap gap-3">
+                  <Button onClick={() => setTab("search")} className="h-12 rounded-lg bg-[#f5bf42] px-6 font-semibold text-[#172936] hover:bg-[#ffcf62]"><Search className="mr-2" size={18} />{t.heroButton}</Button>
+                  <Button onClick={openAdd} variant="outline" className="h-12 rounded-lg border-white/35 bg-white/12 px-6 font-bold text-white backdrop-blur hover:bg-white/20 hover:text-white"><PackagePlus className="mr-2" size={18} />{t.addItem}</Button>
+                </div>
+              </div>
+            </section>}
+
+            <section className="search-filters" aria-label={lang === "da" ? "Søgeområde og pris" : "Sökområde och pris"}>
+              <div className="filter-grid">
+                <PlacePicker value={origin} onChange={setOrigin} lang={lang} label={lang === "da" ? "Søg fra postnummer eller by" : "Sök från postnummer eller ort"} />
+                <div className="place-field"><label id="radius-label">Radius</label>
+                  <Select value={radius} onValueChange={setRadius}>
+                    <SelectTrigger aria-labelledby="radius-label" className="!h-12 w-full rounded-xl bg-white"><SelectValue /></SelectTrigger>
+                    <SelectContent>{["5","10","25","50","100","200"].map(k=><SelectItem key={k} value={k}>{k} km</SelectItem>)}<SelectItem value="all">{lang === "da" ? "Ingen afstandsgrænse" : "Ingen avståndsgräns"}</SelectItem></SelectContent>
+                  </Select>
+                </div>
+                <div className="place-field"><label id="price-filter-label">{lang === "da" ? "Pris" : "Pris"}</label>
+                  <Select value={priceFilter} onValueChange={setPriceFilter}>
+                    <SelectTrigger aria-labelledby="price-filter-label" className="!h-12 w-full rounded-xl bg-white"><SelectValue /></SelectTrigger>
+                    <SelectContent><SelectItem value="all">{lang === "da" ? "Gratis og betalt" : "Gratis och betalt"}</SelectItem><SelectItem value="free">{lang === "da" ? "Kun gratis" : "Bara gratis"}</SelectItem><SelectItem value="paid">{lang === "da" ? "Kun betalt" : "Bara betalt"}</SelectItem></SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="filter-explanation">
+                <span>{origin ? (lang === "da" ? `Udgangspunkt: ${origin.postcode} ${origin.city}. Afstand i luftlinje mellem postområder.` : `Utgångspunkt: ${origin.postcode} ${origin.city}. Fågelväg mellan postområden.`) : (lang === "da" ? "Vælg et postnummer/by fra listen for at bruge radius." : "Välj ett postnummer/ort från listan för att använda radie.")}</span>
+                {profile && <button onClick={()=>setOrigin(profile.place)}>{lang === "da" ? "Brug min by" : "Använd min ort"}</button>}
+              </div>
+            </section>
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <button className={`country-pill ${country === "ALL" ? "active" : ""}`} onClick={() => setCountry("ALL")}><MapPin size={17} />{t.nearby}</button>
+              <button className={`country-pill ${country === "DK" ? "active" : ""}`} onClick={() => setCountry("DK")}><span>🇩🇰</span>{t.denmark}</button>
+              <button className={`country-pill ${country === "SE" ? "active" : ""}`} onClick={() => setCountry("SE")}><span>🇸🇪</span>{t.sweden}</button>
+            </div>
+            <div className="category-strip scrollbar-none" role="list" aria-label="Kategorier">
+              {categories.map((cat) => {
+                const Icon = cat.icon;
+                return <button key={cat.id} data-category={cat.id} role="listitem" className={`category-chip ${category === cat.id ? "active" : ""}`} onClick={() => setCategory(cat.id)}>
+                  <Icon size={19} /><span>{cat[lang]}</span>
+                </button>;
+              })}
+            </div>
+            <div className="mb-4 mt-7 flex items-end justify-between">
+              <div><p className="text-sm font-bold uppercase tracking-[0.14em] text-[#777b90]">{`${filtered.length} ${t.results}`}{radius !== "all" ? ` · ${radius} km` : ""}</p><h2 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">{t.popular}</h2></div>
+              <button className="hidden text-sm font-bold text-[#008EAC] sm:block" onClick={() => setTab("search")}>{t.viewAll} →</button>
+            </div>
+            {filtered.length ? <div className="listing-grid">{filtered.map((item) => <ListingCard key={item.id} item={item} freeLabel={priceLabel(item, lang)} onOpen={() => setSelected(item)} />)}</div> :
+              <div className="rounded-xl border border-dashed border-[#cbd0dd] bg-white px-6 py-16 text-center"><Search className="mx-auto mb-4 text-[#85899b]" size={34} /><p className="font-bold">{t.noResults}</p></div>}
+          </>}
+
+          {tab === "requests" && <RequestsView t={t} loans={loans} lang={lang} onChat={() => toast.info(lang === "da" ? "Beskeder åbner her" : "Meddelanden öppnas här")} onAgreement={setAgreementLoan} />}
+          {tab === "profile" && <ProfileView t={t} lang={lang} setLang={setLang} profile={profile} authenticatedEmail={user?.email || undefined} onSave={saveProfile}
+            onLogout={logout} verified={identityVerified} onVerify={() => setShowIdentityVerification(true)} listings={listings.filter(item => item.owned)} plan={listingPlan} onUpgrade={() => setShowUpgrade(true)} onManage={() => billing("portal")} onAdd={openAdd} onEdit={openEdit} onDelete={setPendingDelete} />}
+        </section>
+
+        <aside className="hidden xl:block">
+          <div className="sticky top-24 space-y-4">
+            <div className="sharing-info">
+              <h2>{lang === "da" ? "Enkel og ærlig pris" : "Enkelt och tydligt pris"}</h2>
+              <p><b>{lang === "da" ? "Gratis at søge og låne" : "Gratis att söka och låna"}</b>{lang === "da" ? "Det koster ikke noget at finde ting eller sende en forespørgsel." : "Det kostar inget att hitta saker eller skicka en förfrågan."}</p>
+              <p><b>{lang === "da" ? "3 annoncer gratis" : "3 annonser gratis"}</b>{lang === "da" ? "Alle kan have op til 3 aktive annoncer uden betaling." : "Alla kan ha upp till 3 aktiva annonser utan betalning."}</p>
+              <p><b>Veyro Circle Plus</b>{lang === "da" ? "49 DKK om måneden for op til 20 aktive annoncer. Sikker betaling via Stripe." : "69 SEK per månad för upp till 20 aktiva annonser. Säker betalning via Stripe."}</p>
+              <p className="muted">{lang === "da" ? "Veyro Circle tager ingen provision af den private lejeaftale." : "Veyro Circle tar ingen provision på den privata hyresaffären."}</p>
+            </div>
+            <div className="rounded-xl border border-[#dde1ec] bg-white p-5">
+              <div className="mb-4 flex items-center gap-3"><span className="flex size-10 items-center justify-center rounded-xl bg-[#edf2f6] text-[#008EAC]"><MessageCircle size={20} /></span><div><p className="font-bold">Veyro Circle</p><p className="text-xs text-[#74788b]">Danmark · Sverige</p></div></div>
+              <p className="text-sm leading-6 text-[#5f6376]">{lang === "da" ? "Del kun ting, du føler dig tryg ved. Aftal altid stand og aflevering i chatten." : "Dela bara saker du känner dig trygg med. Kom alltid överens om skick och återlämning i chatten."}</p>
+            </div>
+          </div>
+        </aside>
+      </div>
+
+      <footer className="data-credit"><img src="/branding/veyro-systems-logo.png" alt="Veyro Systems" /><span>{lang === "da" ? "Et produkt fra Veyro Systems ApS" : "En produkt från Veyro Systems ApS"}</span><small>{lang === "da" ? "Postområder og omtrentlige koordinater:" : "Postområden och ungefärliga koordinater:"} <a href="https://www.geonames.org/" target="_blank" rel="noreferrer">GeoNames</a> · <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer">CC BY 4.0</a></small></footer>
+      <nav className="mobile-nav" aria-label="Mobilmenu">
+        <MobileNav icon={Home} label={t.navHome} active={tab === "home"} onClick={() => setTab("home")} />
+        <MobileNav icon={Search} label={t.navSearch} active={tab === "search"} onClick={() => setTab("search")} />
+        <button className="add-mobile" onClick={openAdd} aria-label={t.addItem}><PackagePlus size={25} /></button>
+        <MobileNav icon={CalendarDays} label={t.navRequests} active={tab === "requests"} badge={requestSent} onClick={() => setTab("requests")} />
+        <MobileNav icon={CircleUserRound} label={t.navProfile} active={tab === "profile"} onClick={() => setTab("profile")} />
+      </nav>
+
+      <Dialog open={!!selected} onOpenChange={(open) => !open && setSelected(null)}>
+        {selected && <DialogContent className="max-h-[92vh] overflow-y-auto rounded-xl border-0 p-0 sm:max-w-[600px]">
+          {selected.photos?.length ? <div className={`listing-detail-gallery ${selected.photos.length === 1 ? "single" : ""}`}>
+            {selected.photos.map((photo, index) => <img key={`${photo.name}-${index}`} src={photo.src} alt={`${selected.name} · billede ${index + 1}`} />)}
+            <span className="absolute left-5 top-5 rounded-md bg-white px-3 py-1.5 text-sm font-bold shadow-sm">{priceLabel(selected, lang)}</span>
+          </div> : <div className={`relative flex h-52 items-center justify-center bg-gradient-to-br ${selected.color}`}><selected.icon size={86} strokeWidth={1.35} className="text-[#172936]/75" /><span className="absolute left-5 top-5 rounded-full bg-white px-3 py-1.5 text-sm font-bold">{priceLabel(selected, lang)}</span></div>}
+          <div className="p-6 sm:p-8">
+            <DialogHeader className="text-left"><DialogTitle className="text-2xl font-bold tracking-tight">{selected.name}</DialogTitle><DialogDescription className="flex flex-wrap items-center gap-3"><span className="flex items-center gap-1"><MapPin size={15} />{selected.city} · {Number.isFinite(selected.distance) ? `ca. ${selected.distance.toLocaleString(lang === "da" ? "da-DK" : "sv-SE", {maximumFractionDigits: 1})} km` : ""}</span><span className="flex items-center gap-1 font-bold text-[#172936]"><Star size={15} fill="#aa6500" className="text-[#aa6500]" />{selected.rating}</span></DialogDescription></DialogHeader>
+            <p className="mt-5 leading-7 text-[#575b6e]">{selected.description}</p>
+            <div className="mt-5 flex items-center justify-between rounded-xl bg-[#f2f4f9] p-4"><div className="flex items-center gap-3"><span className="flex size-10 items-center justify-center rounded-full bg-[#008EAC] font-bold text-white">{selected.owner[0]}</span><div><p className="font-bold">{selected.owner}</p><p className="text-xs text-[#777b8e]">{t.verify}</p></div></div><ShieldCheck size={22} className="text-[#587560]" /></div>
+            <div className="mt-4 flex items-center gap-2 text-sm font-bold text-[#31744c]"><Check size={17} />{selected.availability}</div>
+            {selected.owned ? <div className="mt-7 grid grid-cols-2 gap-3">
+              <Button variant="outline" className="h-13 rounded-xl" onClick={() => openEdit(selected)}><Pencil size={17} />{lang === "da" ? "Rediger" : "Redigera"}</Button>
+              <Button variant="outline" className="h-13 rounded-xl border-[#d9aaaa] text-[#9c3030] hover:bg-[#fff1f1] hover:text-[#842424]" onClick={() => setPendingDelete(selected)}><Trash2 size={17} />{lang === "da" ? "Slet" : "Ta bort"}</Button>
+            </div> : <Button className="mt-7 h-13 w-full rounded-xl bg-[#008EAC] text-base font-semibold text-white hover:bg-[#006F88]" onClick={openRequest}>{selected.dailyPrice > 0 ? (lang === "da" ? "Spørg om at leje" : "Fråga om att hyra") : t.borrow}</Button>}
+          </div>
+        </DialogContent>}
+      </Dialog>
+
+      <Dialog open={showRequest} onOpenChange={setShowRequest}>
+        <DialogContent className="rounded-xl sm:max-w-[520px]">
+          <DialogHeader><DialogTitle className="text-2xl font-bold">{t.requestTitle}</DialogTitle><DialogDescription>{selected?.name}</DialogDescription></DialogHeader>
+          <div className="grid gap-4 sm:grid-cols-2"><label className="field-label">{t.from}<input type="date" min={todayLocal()} value={from} onChange={e=>setFrom(e.target.value)} /></label><label className="field-label">{t.to}<input type="date" min={from || todayLocal()} value={to} onChange={e=>setTo(e.target.value)} /></label></div>
+          <label className="field-label">{t.message}<textarea value={requestMessage} onChange={e=>setRequestMessage(e.target.value)} placeholder={lang === "da" ? "Fortæl kort, hvad du skal bruge tingen til." : "Berätta kort vad du behöver saken till."} rows={4} /></label>
+          <label className="field-label">{lang === "da" ? "Depositum (valgfrit)" : "Deposition (valfritt)"} · {selected?.country === "SE" ? "SEK" : "DKK"}<input inputMode="decimal" value={depositInput} onChange={e=>setDepositInput(e.target.value)} placeholder="0" maxLength={10} /><small>{lang === "da" ? "Beløbet indgår automatisk i lejeaftalen. Ingen betaling trækkes i appen." : "Beloppet tas automatiskt med i hyresavtalet. Ingen betalning dras i appen."}</small></label>
+          <div className="price-summary">
+            <span>{lang === "da" ? "Pris for perioden" : "Pris för perioden"}</span>
+            <strong>{selected && dateValid && days ? (selected.dailyPrice ? money(selected.dailyPrice * days, selected.country, lang) : t.free) : "—"}</strong>
+            {selected && dateValid && days && <small>{days} {lang === "da" ? "kalenderdage" : "kalenderdagar"} · {priceLabel(selected, lang)}</small>}
+            <p>{lang === "da" ? "Både start- og slutdagen tæller med. Betaling aftales direkte med ejeren. Der trækkes ingen penge i appen." : "Både start- och slutdagen räknas. Betalning avtalas direkt med ägaren. Inga pengar dras i appen."}</p>
+          </div>
+          {formError && <p role="alert" className="form-error">{formError}</p>}
+          <Button disabled={!dateValid} onClick={sendRequest} className="h-13 rounded-xl bg-[#008EAC] text-base font-semibold text-white hover:bg-[#006F88]">{t.send}</Button>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!agreementLoan} onOpenChange={open => !open && setAgreementLoan(null)}>
+        {agreementLoan && <DialogContent className="agreement-dialog max-h-[94vh] overflow-y-auto rounded-xl sm:max-w-[760px]">
+          <div className="print-agreement">
+            <DialogHeader className="agreement-header"><p className="eyebrow">Veyro Circle · {agreementLoan.id}</p><DialogTitle className="text-2xl font-bold">{lang === "da" ? "Leje- og låneaftale" : "Hyres- och låneavtal"}</DialogTitle><DialogDescription>{lang === "da" ? "Automatisk aftale mellem ejeren og låneren" : "Automatiskt avtal mellan ägaren och låntagaren"}</DialogDescription></DialogHeader>
+            <div className="agreement-parties"><AgreementParty title={lang === "da" ? "Udlejer / ejer" : "Uthyrare / ägare"} name={agreementLoan.item.owner} address={`${agreementLoan.item.city}, ${agreementLoan.item.country}`} /><AgreementParty title={lang === "da" ? "Låner / lejer" : "Låntagare / hyrestagare"} name={agreementLoan.borrower.name} address={`${agreementLoan.borrower.street}, ${agreementLoan.borrower.place.postcode} ${agreementLoan.borrower.place.city}`} /></div>
+            <dl className="agreement-facts"><div><dt>{lang === "da" ? "Genstand" : "Föremål"}</dt><dd>{agreementLoan.item.name}</dd></div><div><dt>{lang === "da" ? "Periode" : "Period"}</dt><dd>{agreementLoan.from} – {agreementLoan.to} ({agreementLoan.days} {lang === "da" ? "dage" : "dagar"})</dd></div><div><dt>{lang === "da" ? "Lejepris" : "Hyra"}</dt><dd>{agreementLoan.total ? money(agreementLoan.total, agreementLoan.item.country, lang) : t.free}</dd></div><div><dt>{lang === "da" ? "Depositum" : "Deposition"}</dt><dd>{agreementLoan.deposit ? money(agreementLoan.deposit, agreementLoan.item.country, lang) : (lang === "da" ? "Intet aftalt" : "Ingen avtalad")}</dd></div></dl>
+            <section className="agreement-terms"><h3>{lang === "da" ? "Aftalens vilkår" : "Avtalsvillkor"}</h3><ol><li>{lang === "da" ? "Genstanden udleveres i den beskrevne stand. Parterne bør dokumentere standen med billeder ved udlevering og aflevering." : "Föremålet lämnas ut i beskrivet skick. Parterna bör dokumentera skicket med bilder vid utlämning och återlämning."}</li><li>{lang === "da" ? "Låneren skal bruge genstanden forsvarligt og returnere den senest på slutdatoen. Tid og sted aftales mellem parterne." : "Låntagaren ska använda föremålet aktsamt och återlämna det senast på slutdagen. Tid och plats avtalas mellan parterna."}</li><li>{lang === "da" ? "Skader, bortkomst, betaling, depositum og eventuel erstatning afgøres mellem parterne efter gældende ret. Veyro Circle er formidler og ikke part i aftalen." : "Skador, förlust, betalning, deposition och eventuell ersättning avgörs mellan parterna enligt gällande rätt. Veyro Circle förmedlar kontakten och är inte part i avtalet."}</li></ol>{agreementLoan.message && <p><b>{lang === "da" ? "Særlig aftale:" : "Särskild överenskommelse:"}</b> {agreementLoan.message}</p>}</section>
+            <div className="agreement-signatures"><SignatureBox title={lang === "da" ? "Låners underskrift" : "Låntagarens underskrift"} name={agreementLoan.borrower.name} signedAt={agreementLoan.borrowerSignedAt} lang={lang} onSign={() => signAgreement(agreementLoan, "borrower")} /><SignatureBox title={lang === "da" ? "Ejers underskrift" : "Ägarens underskrift"} name={agreementLoan.item.owner} signedAt={agreementLoan.lenderSignedAt} lang={lang} onSign={() => signAgreement(agreementLoan, "lender")} /></div>
+            <p className="agreement-legal"><LockKeyhole size={15} />{lang === "da" ? "Prøveversion: Underskriften registrerer navn og tidspunkt i denne session. En produktionsversion bør identificere hver part med MitID/BankID og låse dokumentets indhold efter første underskrift." : "Demoversion: Signaturen registrerar namn och tidpunkt i den här sessionen. En produktionsversion bör identifiera varje part med BankID/MitID och låsa dokumentets innehåll efter den första signaturen."}</p>
+          </div>
+          <div className="agreement-actions no-print"><Button variant="outline" onClick={() => window.print()}><Printer size={17} />{lang === "da" ? "Udskriv / gem som PDF" : "Skriv ut / spara som PDF"}</Button><span>{agreementLoan.borrowerSignedAt && agreementLoan.lenderSignedAt ? (lang === "da" ? "Aftalen er underskrevet af begge" : "Avtalet är signerat av båda") : (lang === "da" ? "Afventer begge underskrifter" : "Väntar på båda signaturerna")}</span></div>
+        </DialogContent>}
+      </Dialog>
+
+      <Dialog open={showIdentityVerification} onOpenChange={setShowIdentityVerification}>
+        <DialogContent className="identity-dialog rounded-xl sm:max-w-[480px]">
+          <DialogHeader><span className="identity-logo"><LockKeyhole size={27} /></span><DialogTitle className="text-2xl font-bold">{profile?.place.country === "SE" ? "Verifiera med BankID" : "Verificer med MitID"}</DialogTitle><DialogDescription>{lang === "da" ? "Din identitet skal bekræftes, før du kan dele, leje eller underskrive en aftale." : "Din identitet måste bekräftas innan du kan dela, hyra eller signera ett avtal."}</DialogDescription></DialogHeader>
+          <div className="identity-benefits"><p><ShieldCheck size={18} /><span><b>{lang === "da" ? "Én verificeret person" : "En verifierad person"}</b>{lang === "da" ? "Navn og land knyttes sikkert til kontoen." : "Namn och land kopplas säkert till kontot."}</span></p><p><FileSignature size={18} /><span><b>{lang === "da" ? "Dokumenteret underskrift" : "Dokumenterad signatur"}</b>{lang === "da" ? "Aftaler registreres med bruger, dokument og tidspunkt." : "Avtal registreras med användare, dokument och tidpunkt."}</span></p></div>
+          {!profile && <p className="identity-warning">{lang === "da" ? "Opret først din profil og vælg Danmark eller Sverige." : "Skapa först din profil och välj Danmark eller Sverige."}</p>}
+          <Button disabled={!profile} className="h-13 bg-[#008EAC] text-white hover:bg-[#006F88]" onClick={() => { setIdentityVerified(true); setShowIdentityVerification(false); toast.success(profile?.place.country === "SE" ? "BankID-verificering gennemført i demoen." : "MitID-verificering gennemført i demoen."); }}><BadgeCheck size={19} />{profile?.place.country === "SE" ? "Fortsæt med BankID (demo)" : "Fortsæt med MitID (demo)"}</Button>
+          <p className="identity-disclaimer">{lang === "da" ? "Prøveversion: Der sendes ikke data til MitID eller BankID. Ved lancering erstattes knappen af en integration gennem en godkendt identitetsleverandør." : "Demoversion: Ingen data skickas till MitID eller BankID. Vid lansering ersätts knappen av en integration via en godkänd identitetsleverantör."}</p>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showAdd} onOpenChange={open => { setShowAdd(open); if (!open) resetItemForm(); }}>
+        <DialogContent className="max-h-[92vh] overflow-y-auto rounded-xl sm:max-w-[560px]">
+          <DialogHeader><DialogTitle className="text-2xl font-bold">{editingId !== null ? (lang === "da" ? "Rediger din ting" : "Redigera din sak") : t.addTitle}</DialogTitle><DialogDescription>{t.addDescription}</DialogDescription></DialogHeader>
+          {editingId === null && <div className="listing-limit-inline"><span>{listingPlan === "plus" ? <Crown size={17} /> : <PackagePlus size={17} />}{listingPlan === "plus" ? "Veyro Circle Plus" : (lang === "da" ? "Gratis" : "Gratis")}</span><b>{listings.filter(item => item.owned).length + 1} / {listingLimit(listingPlan)}</b></div>}
+          <div className="photo-uploader">
+            <div className="photo-uploader-head"><div><b>{t.photo}</b><small>{lang === "da" ? "Maks. 2 billeder · JPG, PNG eller WEBP" : "Högst 2 bilder · JPG, PNG eller WEBP"}</small></div><span>{newPhotos.length}/2</span></div>
+            {newPhotos.length > 0 && <div className="photo-previews">
+              {newPhotos.map((photo, index) => <figure key={`${photo.name}-${index}`}><img src={photo.src} alt={lang === "da" ? `Valgt billede ${index + 1}` : `Vald bild ${index + 1}`} /><button type="button" onClick={() => setNewPhotos(items => items.filter((_, i) => i !== index))} aria-label={lang === "da" ? `Fjern billede ${index + 1}` : `Ta bort bild ${index + 1}`}><X size={17} /></button><figcaption>{formatImageSize(photo.bytes, lang)}</figcaption></figure>)}
+            </div>}
+            {newPhotos.length < MAX_LISTING_IMAGES && <label className={`photo-drop ${isCompressing ? "is-loading" : ""}`}>
+              {isCompressing ? <Camera className="animate-pulse" size={27} /> : <ImagePlus size={27} />}
+              <span>{isCompressing ? (lang === "da" ? "Komprimerer…" : "Komprimerar…") : (newPhotos.length ? (lang === "da" ? "Tilføj et billede mere" : "Lägg till en bild till") : t.photo)}</span>
+              <small>{lang === "da" ? "Tag et foto eller vælg fra enheden · komprimeres automatisk" : "Ta ett foto eller välj från enheten · komprimeras automatiskt"}</small>
+              <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" multiple disabled={isCompressing} onChange={event => { void addPhotos(event.target.files); event.currentTarget.value = ""; }} />
+            </label>}
+          </div>
+          <label className="field-label">{t.itemName}<input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder={lang === "da" ? "Fx tæpperenser" : "T.ex. mattvätt"} /></label>
+          <div className="field-label">{t.country}<CountrySelect value={newCountry} onChange={c=>{setNewCountry(c);setNewPlace(null);}} lang={lang} /></div>
+          <PlacePicker key={newCountry} country={newCountry} value={newPlace} onChange={setNewPlace} lang={lang} label={lang === "da" ? "Afhentning · postnummer og by *" : "Hämtning · postnummer och ort *"} />
+          <div className="field-label">{lang === "da" ? "Kategori" : "Kategori"}<Select value={newCategory} onValueChange={setNewCategory}><SelectTrigger className="!h-12 w-full bg-white"><SelectValue /></SelectTrigger><SelectContent>{categories.filter(c=>c.id !== "all").map(c=><SelectItem key={c.id} value={c.id}>{c[lang]}</SelectItem>)}</SelectContent></Select></div>
+          <fieldset className="pricing-choice">
+            <legend>{lang === "da" ? "Hvordan vil du dele tingen?" : "Hur vill du dela saken?"}</legend>
+            <RadioGroup value={pricing} onValueChange={setPricing} className="grid grid-cols-2 gap-3">
+              <label htmlFor="price-free" className={pricing === "free" ? "selected" : ""}><RadioGroupItem id="price-free" value="free" />{lang === "da" ? "Gratis udlån" : "Gratis utlåning"}</label>
+              <label htmlFor="price-paid" className={pricing === "paid" ? "selected" : ""}><RadioGroupItem id="price-paid" value="paid" />{lang === "da" ? "Mod betaling" : "Mot betalning"}</label>
+            </RadioGroup>
+            {pricing === "paid" && <label className="field-label mt-4">{lang === "da" ? "Pris pr. kalenderdag" : "Pris per kalenderdag"} · {newCountry === "DK" ? "DKK" : "SEK"}<input inputMode="decimal" value={priceInput} onChange={e=>setPriceInput(e.target.value)} placeholder="50" maxLength={10} /><small>{lang === "da" ? "Ingen automatisk betaling. Beløbet aftales med låneren." : "Ingen automatisk betalning. Beloppet avtalas med låntagaren."}</small></label>}
+          </fieldset>
+          <label className="field-label">{t.description}<textarea value={newDescription} onChange={(e) => setNewDescription(e.target.value)} rows={4} placeholder={lang === "da" ? "Stand, tilbehør og det låneren bør vide…" : "Skick, tillbehör och det låntagaren bör veta…"} /></label>
+          {formError && <p role="alert" className="form-error">{formError}</p>}
+          <Button disabled={isCompressing} onClick={publishItem} className="h-13 rounded-xl bg-[#008EAC] text-base font-semibold text-white hover:bg-[#006F88]">{editingId !== null ? (lang === "da" ? "Gem ændringer" : "Spara ändringar") : t.publish}</Button>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showUpgrade} onOpenChange={setShowUpgrade}>
+        <DialogContent className="rounded-xl sm:max-w-[520px]">
+          <DialogHeader><DialogTitle className="flex items-center gap-3 text-2xl font-bold"><span className="plus-icon"><Crown size={23} /></span>Veyro Circle Plus</DialogTitle><DialogDescription>{lang === "da" ? "Du har brugt dine 3 gratis annoncer. Med Plus kan du have op til 20 aktive ting ad gangen." : "Du har använt dina 3 gratisannonser. Med Plus kan du ha upp till 20 aktiva saker samtidigt."}</DialogDescription></DialogHeader>
+          <div className="upgrade-price"><strong>{profile?.place.country === "SE" ? "69 SEK" : "49 DKK"}</strong><span>{lang === "da" ? "om måneden" : "per månad"}</span></div>
+          <ul className="upgrade-benefits">
+            <li><Check size={18} />{lang === "da" ? "Op til 20 aktive ting" : "Upp till 20 aktiva saker"}</li>
+            <li><Check size={18} />{lang === "da" ? "Både gratis deling og betalt udlejning" : "Både gratis delning och betald uthyrning"}</li>
+            <li><Check size={18} />{lang === "da" ? "Ingen provision på den private lejeaftale" : "Ingen provision på den privata uthyrningen"}</li>
+          </ul>
+          <p className="demo-note">{configured ? (lang === "da" ? "Du sendes til Stripes sikre betalingsside. Abonnementet kan bagefter administreres fra din konto." : "Du skickas till Stripes säkra betalningssida. Prenumerationen kan sedan hanteras från ditt konto.") : (lang === "da" ? "Demotilstand: Der trækkes ikke penge, før Firebase og Stripe er konfigureret." : "Demoläge: Inga pengar dras innan Firebase och Stripe har konfigurerats.")}</p>
+          <Button disabled={billingBusy} className="h-13 rounded-xl bg-[#008EAC] text-base font-bold text-white hover:bg-[#006F88]" onClick={() => billing("checkout")}>{billingBusy ? (lang === "da" ? "Åbner sikker betaling…" : "Öppnar säker betalning…") : (lang === "da" ? "Køb Circle Plus" : "Köp Circle Plus")}</Button>
+          <Button variant="ghost" className="h-11 rounded-xl" onClick={() => setShowUpgrade(false)}>{lang === "da" ? "Ikke nu" : "Inte nu"}</Button>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={!!pendingDelete} onOpenChange={open => !open && setPendingDelete(null)}>
+        {pendingDelete && <AlertDialogContent>
+          <AlertDialogHeader><AlertDialogTitle>{lang === "da" ? "Slet denne ting?" : "Ta bort den här saken?"}</AlertDialogTitle><AlertDialogDescription>{lang === "da" ? `“${pendingDelete.name}” fjernes fra dine annoncer. Handlingen kan ikke fortrydes.` : `“${pendingDelete.name}” tas bort från dina annonser. Åtgärden kan inte ångras.`}</AlertDialogDescription></AlertDialogHeader>
+          <AlertDialogFooter><AlertDialogCancel>{lang === "da" ? "Annuller" : "Avbryt"}</AlertDialogCancel><AlertDialogAction variant="destructive" onClick={() => deleteItem(pendingDelete)}><Trash2 size={17} />{lang === "da" ? "Slet" : "Ta bort"}</AlertDialogAction></AlertDialogFooter>
+        </AlertDialogContent>}
+      </AlertDialog>
+    </main>
+  );
+}
+
+function priceLabel(item: Listing, lang: Lang) {
+  return item.dailyPrice === 0 ? "Gratis" : money(item.dailyPrice, item.country, lang) + (lang === "da" ? " / dag" : " / dag");
+}
+
+function ListingCard({ item, freeLabel, onOpen }: { item: Listing; freeLabel: string; onOpen: () => void }) {
+  const Icon = item.icon;
+  return <button onClick={onOpen} className="listing-card text-left"><div className={`listing-image bg-gradient-to-br ${item.color}`}>{item.photos?.[0] ? <img src={item.photos[0].src} alt={item.name} /> : <Icon size={57} strokeWidth={1.4} className="text-[#172936]/70" />}<span className={`free-tag ${item.dailyPrice === 0 ? "is-free" : "is-paid"}`}>{freeLabel}</span><span className="heart-button"><Heart size={18} /></span>{item.photos && item.photos.length > 1 && <span className="photo-count"><Camera size={14} />{item.photos.length}</span>}</div><div className="p-4"><div className="flex items-start justify-between gap-2"><h3>{item.name}</h3><span className="mt-1 flex shrink-0 items-center gap-1 text-xs font-bold">{item.rating > 0 ? <><Star size={13} fill="#aa6500" className="text-[#aa6500]" />{item.rating}</> : "Ny"}</span></div><p className="mt-2 flex items-center gap-1.5 text-sm text-[#6d7185]"><MapPin size={15} />{item.city} · {Number.isFinite(item.distance) ? `ca. ${item.distance.toLocaleString("da-DK", {maximumFractionDigits: 1})} km` : ""}</p><div className="mt-3 flex items-center gap-2"><span className="size-2 rounded-full bg-[#38a66b]" /><span className="text-xs font-bold text-[#397252]">{item.availability}</span></div></div></button>;
+}
+
+function SideNav({ icon: Icon, label, active, badge, onClick }: { icon: typeof Home; label: string; active?: boolean; badge?: string; onClick: () => void }) {
+  return <button onClick={onClick} className={`side-nav ${active ? "active" : ""}`}><Icon size={20} /><span>{label}</span>{badge && <b>{badge}</b>}</button>;
+}
+
+function MobileNav({ icon: Icon, label, active, badge, onClick }: { icon: typeof Home; label: string; active?: boolean; badge?: boolean; onClick: () => void }) {
+  return <button onClick={onClick} className={`mobile-nav-item ${active ? "active" : ""}`}><span className="relative"><Icon size={22} />{badge && <i />}</span><small>{label}</small></button>;
+}
+
+function RequestsView({ t, loans, lang, onChat, onAgreement }: { t: typeof copy.da; loans: Loan[]; lang: Lang; onChat: () => void; onAgreement: (loan: Loan) => void }) {
+  const demoAgreement: Loan = {
+    id: "VC-DEMO-2026", item: initialListings[1], from: "2026-09-12", to: "2026-09-13", days: 2,
+    total: initialListings[1].dailyPrice * 2, deposit: 50000, message: "Traileren afleveres rengjort og senest kl. 18.00.",
+    borrower: { name: "Demo Bruger", email: "demo@example.dk", street: "Eksempelvej 12", place: seedPlace("Jystrup", "DK") },
+  };
+  return <div className="content-panel">
+    <div className="mb-7"><p className="eyebrow">Veyro Circle</p><h1 className="page-title">{t.requests}</h1></div>
+    <p className="demo-note">{lang === "da" ? "Testforespørgsler gemmes i denne session. Ingen besked sendes til en rigtig ejer." : "Testförfrågningar sparas i denna session. Inget meddelande skickas till en riktig ägare."}</p>
+    <button type="button" className="agreement-demo-card" onClick={() => onAgreement(demoAgreement)}>
+      <span><FileSignature size={25} /></span><div><small>{lang === "da" ? "Klik her – kræver ingen profil" : "Klicka här – kräver ingen profil"}</small><b>{lang === "da" ? "Se eksempel på automatisk lejeaftale" : "Se exempel på automatiskt hyresavtal"}</b><p>{lang === "da" ? "Prøv underskrifterne, og se papir-/PDF-visningen." : "Prova signaturerna och se pappers-/PDF-vyn."}</p></div><strong>{lang === "da" ? "Åbn" : "Öppna"} →</strong>
+    </button>
+    <div className="mt-6 space-y-4">
+      {loans.map((loan, i)=><article key={i} className="request-summary">
+        <LoanRow title={loan.item.name} owner={loan.item.owner} status={t.awaiting} statusClass="waiting" icon={loan.item.icon} onChat={onChat} chatLabel={t.chat} dates={loan.from + " → " + loan.to} />
+        <div className="request-price"><span>{loan.days} {lang === "da" ? "kalenderdage" : "kalenderdagar"}</span><b>{loan.total === 0 ? t.free : money(loan.total, loan.item.country, lang)}</b></div>
+        {loan.message && <p>{loan.message}</p>}
+        <button type="button" className="agreement-open" onClick={() => onAgreement(loan)}><FileSignature size={18} /><span>{lang === "da" ? "Åbn automatisk lejeaftale" : "Öppna automatiskt hyresavtal"}</span><b>{loan.borrowerSignedAt && loan.lenderSignedAt ? (lang === "da" ? "Underskrevet" : "Signerat") : (lang === "da" ? "Klar til underskrift" : "Klar för signering")}</b></button>
+      </article>)}
+      <LoanRow title="Brenderup trailer · demo" owner="Sofie" status={t.approved} statusClass="approved" icon={Truck} onChat={onChat} chatLabel={t.chat} />
+      <LoanRow title="Højtryksrenser · demo" owner="Amalie" status={t.activeLoan} statusClass="active-loan" icon={SprayCan} onChat={onChat} chatLabel={t.chat} />
+    </div>
+  </div>;
+}
+
+function AgreementParty({ title, name, address }: { title: string; name: string; address: string }) {
+  return <section><small>{title}</small><b>{name}</b><span>{address}</span></section>;
+}
+
+function SignatureBox({ title, name, signedAt, lang, onSign }: { title: string; name: string; signedAt?: string; lang: Lang; onSign: () => void }) {
+  return <section className={signedAt ? "is-signed" : ""}><small>{title}</small><b>{name}</b>{signedAt ? <><span className="signature-script">{name}</span><time>{new Intl.DateTimeFormat(lang === "da" ? "da-DK" : "sv-SE", { dateStyle: "medium", timeStyle: "short" }).format(new Date(signedAt))}</time></> : <Button type="button" onClick={onSign} className="no-print"><FileSignature size={17} />{lang === "da" ? "Underskriv i appen" : "Signera i appen"}</Button>}</section>;
+}
+
+function LoanRow({ title, owner, status, statusClass, icon: Icon, onChat, chatLabel, dates = "12.–13. sep. (demo)" }: { title: string; owner: string; status: string; statusClass: string; icon: typeof Drill; onChat: () => void; chatLabel: string; dates?: string }) {
+  return <article className="loan-row"><div className="flex size-16 shrink-0 items-center justify-center rounded-xl bg-[#eef0f8]"><Icon size={31} className="text-[#008EAC]" /></div><div className="min-w-0 flex-1"><h3 className="truncate font-semibold">{title}</h3><p className="mt-1 text-sm text-[#73778b]">{owner} · {dates}</p><span className={`loan-status ${statusClass}`}>{status}</span></div><button onClick={onChat} className="chat-button"><MessageCircle size={18} /><span className="hidden sm:inline">{chatLabel}</span></button></article>;
+}
+
+function ProfileView({ t, lang, setLang, profile, authenticatedEmail, onSave, onLogout, verified, onVerify, listings, plan, onUpgrade, onManage, onAdd, onEdit, onDelete }: {
+  t: typeof copy.da; lang: Lang; setLang: (lang: Lang) => void; profile: Profile | null; onSave: (p: Profile)=>void;
+  authenticatedEmail?: string; onLogout: () => void;
+  verified: boolean; onVerify: () => void;
+  listings: Listing[]; plan: ListingPlan; onUpgrade: () => void; onManage: () => void; onAdd: () => void; onEdit: (item: Listing) => void; onDelete: (item: Listing) => void;
+}) {
+  const limit = listingLimit(plan);
+  const used = listings.length;
+  return <div className="content-panel">
+    <div className="profile-head"><span className="profile-avatar"><CircleUserRound size={32} /></span><div className="min-w-0 flex-1"><p className="eyebrow">{lang === "da" ? "Din konto" : "Ditt konto"}</p><h1 className="page-title">{profile?.name || (lang === "da" ? "Log ind eller opret konto" : "Logga in eller skapa konto")}</h1>{profile && <><p className="mt-2 text-sm">{profile.email}</p><p className="mt-1 text-sm">{profile.place.postcode} {profile.place.city} · {profile.place.country}</p></>}</div>{profile && <Button type="button" variant="outline" className="logout-button" onClick={onLogout}><LogOut size={17} />{lang === "da" ? "Log ud" : "Logga ut"}</Button>}</div>
+    <ProfileForm profile={profile} lang={lang} authenticatedEmail={authenticatedEmail} onSave={onSave} />
+    {profile && <section className={`identity-status ${verified ? "is-verified" : ""}`}><span>{verified ? <BadgeCheck size={24} /> : <LockKeyhole size={24} />}</span><div><small>{lang === "da" ? "Identitetskontrol" : "Identitetskontroll"}</small><b>{verified ? (profile.place.country === "SE" ? "BankID-verificeret" : "MitID-verificeret") : (lang === "da" ? "Verificering mangler" : "Verifiering saknas")}</b><p>{verified ? (lang === "da" ? "Du kan dele, leje og underskrive aftaler." : "Du kan dela, hyra och signera avtal.") : (lang === "da" ? "Kræves før du kan oprette annoncer eller sende forespørgsler." : "Krävs innan du kan skapa annonser eller skicka förfrågningar.")}</p></div>{!verified && <Button type="button" onClick={onVerify}>{profile.place.country === "SE" ? "BankID" : "MitID"}</Button>}</section>}
+    {profile && <section className={`membership-card ${plan === "plus" ? "is-plus" : ""}`}>
+      <div className="membership-top"><div className="membership-icon">{plan === "plus" ? <Crown size={22} /> : <PackagePlus size={22} />}</div><div><p className="eyebrow">{lang === "da" ? "Dit abonnement" : "Din prenumeration"}</p><h2>{plan === "plus" ? "Veyro Circle Plus" : (lang === "da" ? "Gratis medlemskab" : "Gratis medlemskap")}</h2></div><span className="plan-badge">{plan === "plus" ? (lang === "da" ? "Aktiv" : "Aktiv") : "0 kr."}</span></div>
+      <div className="membership-usage"><div><span>{lang === "da" ? "Aktive ting" : "Aktiva saker"}</span><b>{used} {lang === "da" ? "af" : "av"} {limit}</b></div><Progress value={Math.min(100, used / limit * 100)} /></div>
+      <p>{plan === "plus" ? (lang === "da" ? "Du kan have op til 20 aktive ting. Redigering og sletning tæller ikke som nye opslag." : "Du kan ha upp till 20 aktiva saker. Redigering och borttagning räknas inte som nya annonser.") : (lang === "da" ? `Du har ${Math.max(0, FREE_LISTING_LIMIT - used)} gratis opslag tilbage. Plus giver plads til ${PLUS_LISTING_LIMIT} aktive ting.` : `Du har ${Math.max(0, FREE_LISTING_LIMIT - used)} gratisannonser kvar. Plus ger plats för ${PLUS_LISTING_LIMIT} aktiva saker.`)}</p>
+      {plan === "free" && <Button type="button" onClick={onUpgrade} className="membership-cta"><Crown size={17} />{lang === "da" ? "Se Veyro Circle Plus" : "Se Veyro Circle Plus"}</Button>}
+      {plan === "plus" && <Button type="button" onClick={onManage} variant="outline" className="membership-cta manage-subscription">{lang === "da" ? "Administrer abonnement" : "Hantera prenumeration"}</Button>}
+    </section>}
+    <section className="mt-5 rounded-xl border border-[#e0e3ec] bg-white p-5 sm:p-6"><h2 className="text-lg font-bold">{t.language}</h2><div className="mt-4 grid grid-cols-2 gap-3"><button className={`setting-choice ${lang === "da" ? "active" : ""}`} onClick={() => setLang("da")}>🇩🇰 Dansk{lang === "da" && <Check size={17} />}</button><button className={`setting-choice ${lang === "sv" ? "active" : ""}`} onClick={() => setLang("sv")}>🇸🇪 Svenska{lang === "sv" && <Check size={17} />}</button></div></section>
+    <section className="my-items">
+      <div className="my-items-head"><div><p className="eyebrow">{lang === "da" ? "Dine annoncer" : "Dina annonser"}</p><h2>{lang === "da" ? "Mine ting" : "Mina saker"}</h2></div><Button type="button" onClick={onAdd} disabled={!profile || (plan === "plus" && used >= PLUS_LISTING_LIMIT)}><PackagePlus size={17} />{lang === "da" ? "Tilføj" : "Lägg till"}</Button></div>
+      {!profile ? <p className="my-items-empty">{lang === "da" ? "Opret din konto for at dele eller udleje en ting." : "Skapa ditt konto för att dela eller hyra ut en sak."}</p> : listings.length === 0 ? <div className="my-items-empty"><ImagePlus size={28} /><p>{lang === "da" ? "Du har endnu ingen ting. Dine første 3 aktive annoncer er gratis." : "Du har inga saker ännu. Dina första 3 aktiva annonser är gratis."}</p><button type="button" onClick={onAdd}>{lang === "da" ? "Opret din første annonce" : "Skapa din första annons"}</button></div> : <div className="my-items-list">
+        {listings.map(item => { const Icon = item.icon; return <article key={item.id} className="my-item-row"><div className={`my-item-thumb bg-gradient-to-br ${item.color}`}>{item.photos?.[0] ? <img src={item.photos[0].src} alt="" /> : <Icon size={27} />}</div><div className="min-w-0 flex-1"><h3>{item.name}</h3><p>{item.city} · {priceLabel(item, lang)}</p><small>{item.photos?.length || 0}/2 {lang === "da" ? "billeder" : "bilder"}</small></div><div className="my-item-actions"><button type="button" onClick={() => onEdit(item)}><Pencil size={16} />{lang === "da" ? "Rediger" : "Redigera"}</button><button type="button" className="delete" onClick={() => onDelete(item)}><Trash2 size={16} />{lang === "da" ? "Slet" : "Ta bort"}</button></div></article>; })}
+      </div>}
+    </section>
+  </div>;
+}
