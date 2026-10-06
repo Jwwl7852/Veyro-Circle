@@ -83,7 +83,7 @@ export function CircleAuthScreen({ lang, setLang }: { lang: Lang; setLang: (lang
       <div className="auth-promo-image" role="img" aria-label={da ? "Naboer der deler ting i lokalområdet" : "Grannar som delar saker i närområdet"}><span>{da ? "Del mere · køb mindre" : "Dela mer · köp mindre"}</span></div>
       <div className="auth-promo-copy">
         <p className="auth-product-name">Veyro Circle</p>
-        <h2>{da ? "Tingene findes allerede. Del dem med hinanden." : "Sakerna finns redan. Dela dem med varandra."}</h2>
+        <h2>{da ? <>Tingene findes sikkert allerede<br />Del dem med hinanden</> : <>Sakerna finns säkert redan<br />Dela dem med varandra</>}</h2>
         <p>{da ? "Circle gør det enkelt at finde, låne og leje ting i dit lokalområde – eller dele det, du ikke selv bruger hver dag." : "Circle gör det enkelt att hitta, låna och hyra saker i ditt närområde – eller dela det du inte använder varje dag."}</p>
         <ul>
           <li><PackageCheck /><span><b>{da ? "Lån gratis eller lej" : "Låna gratis eller hyr"}</b>{da ? "Find værktøj, trailer, fritidsudstyr og meget mere." : "Hitta verktyg, släp, fritidsutrustning och mycket mer."}</span></li>
