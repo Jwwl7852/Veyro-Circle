@@ -13,7 +13,15 @@ function b64url(value: string | Uint8Array) {
 export async function serviceToken() {
   if (cachedToken && cachedToken.expiresAt > Date.now() + 60_000) return cachedToken.value;
   const email = serverConfig("FIREBASE_SERVICE_ACCOUNT_EMAIL");
-  const pem = serverConfig("FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY").replace(/\\n/g, "\n");
+  let rawKey = serverConfig("FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY").trim();
+  // Netlify accepts both a raw multiline PEM and the JSON-escaped value copied
+  // directly from a Firebase service-account file (optionally with quotes).
+  if (rawKey.startsWith('"') && rawKey.endsWith('"')) {
+    try { rawKey = JSON.parse(rawKey) as string; }
+    catch { rawKey = rawKey.slice(1, -1); }
+  }
+  const pem = rawKey.replace(/\\n/g, "\n").trim();
+  if (!pem.includes("-----BEGIN PRIVATE KEY-----") || !pem.includes("-----END PRIVATE KEY-----")) throw new Error("Firebase private key has invalid PEM markers");
   const der = Uint8Array.from(atob(pem.replace(/-----[^-]+-----|\s/g, "")), c => c.charCodeAt(0));
   const key = await crypto.subtle.importKey("pkcs8", der, { name:"RSASSA-PKCS1-v1_5", hash:"SHA-256" }, false, ["sign"]);
   const now = Math.floor(Date.now() / 1000);
