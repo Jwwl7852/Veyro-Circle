@@ -6,7 +6,7 @@ import {
   sendPasswordResetEmail, signInWithEmailAndPassword, signOut, updateProfile,
   type User,
 } from "firebase/auth";
-import { AlertCircle, CheckCircle2, KeyRound, LoaderCircle, LogIn, MapPin, PackageCheck, ShieldCheck, Smartphone, UserPlus } from "lucide-react";
+import { AlertCircle, CheckCircle2, KeyRound, LoaderCircle, LogIn, MapPin, PackageCheck, ShieldCheck, UserPlus } from "lucide-react";
 import { auth, firebaseConfigured, missingFirebaseConfig } from "@/lib/firebase-client";
 import { Button } from "@/components/ui/button";
 import type { Lang } from "@/lib/marketplace";
@@ -85,7 +85,6 @@ export function CircleAuthScreen({ lang, setLang }: { lang: Lang; setLang: (lang
         <p className="auth-product-name">Veyro Circle</p>
         <h2>{da ? "Tingene findes allerede. Del dem med hinanden." : "Sakerna finns redan. Dela dem med varandra."}</h2>
         <p>{da ? "Circle gør det enkelt at finde, låne og leje ting i dit lokalområde – eller dele det, du ikke selv bruger hver dag." : "Circle gör det enkelt att hitta, låna och hyra saker i ditt närområde – eller dela det du inte använder varje dag."}</p>
-        <div className="auth-mobile-note"><Smartphone /><span><b>{da ? "Det hele ordnes på mobilen" : "Allt ordnas i mobilen"}</b>{da ? "Find tingen, aftal vilkårene og underskriv lejeaftalen direkte på telefonen." : "Hitta saken, avtala villkoren och signera hyresavtalet direkt i telefonen."}</span></div>
         <ul>
           <li><PackageCheck /><span><b>{da ? "Lån gratis eller lej" : "Låna gratis eller hyr"}</b>{da ? "Find værktøj, trailer, fritidsudstyr og meget mere." : "Hitta verktyg, släp, fritidsutrustning och mycket mer."}</span></li>
           <li><MapPin /><span><b>{da ? "Find ting i nærheden" : "Hitta saker i närheten"}</b>{da ? "Søg efter kategori, land og afstand." : "Sök efter kategori, land och avstånd."}</span></li>
