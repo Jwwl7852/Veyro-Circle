@@ -50,6 +50,21 @@ service cloud.firestore {
           'updatedAt'
         ]);
       allow delete: if false;
+
+      match /messages/{messageId} {
+        function participant() {
+          return signedIn()
+            && request.auth.uid in get(/databases/$(database)/documents/agreements/$(agreementId)).data.participantUids;
+        }
+        allow read: if participant();
+        allow create: if participant()
+          && request.resource.data.senderUid == request.auth.uid
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 2000
+          && request.resource.data.keys().hasOnly(['senderUid', 'text', 'createdAt']);
+        allow update, delete: if false;
+      }
     }
   }
 }
