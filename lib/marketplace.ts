@@ -67,7 +67,11 @@ export function todayLocal() {
   return [d.getFullYear(), String(d.getMonth() + 1).padStart(2, "0"), String(d.getDate()).padStart(2, "0")].join("-");
 }
 export function validProfile(name: string, street: string, place: Place | null, phone: string) {
-  return name.trim().length >= 2 && name.trim().length <= 100 && street.trim().length >= 4 &&
-    street.trim().length <= 200 && /\d/.test(street) && /^[+()\d .-]{8,24}$/.test(phone.trim()) &&
-    Boolean(place && places.some(p=>p.id === place.id));
+  return name.trim().length >= 2 && name.trim().length <= 100 && validAddress(street, place) &&
+    /^[+()\d .-]{8,24}$/.test(phone.trim());
+}
+export function validAddress(street: string, place: Place | null) {
+  const selectedPlace = place && places.find(p=>p.id === place.id);
+  return street.trim().length >= 4 && street.trim().length <= 200 && /\d/.test(street) &&
+    Boolean(selectedPlace && selectedPlace.country === place?.country && selectedPlace.postcode === place.postcode && selectedPlace.city === place.city);
 }
