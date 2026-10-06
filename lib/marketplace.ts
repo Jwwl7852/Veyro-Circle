@@ -4,7 +4,7 @@ import type { TaxAcknowledgement } from "./tax-guidance";
 export type Country = "DK" | "SE";
 export type Lang = "da" | "sv";
 export type ListingPlan = "free" | "plus";
-export const FREE_LISTING_LIMIT = 3;
+export const FREE_LISTING_LIMIT = 1;
 export const PLUS_LISTING_LIMIT = 20;
 export function listingLimit(plan: ListingPlan) {
   return plan === "plus" ? PLUS_LISTING_LIMIT : FREE_LISTING_LIMIT;
