@@ -92,6 +92,7 @@ button:focus-visible,a:focus-visible { outline:3px solid #819eb6; outline-offset
 .loan-status.active-loan { background:#DDF5F7; color:#008EAC; }
 .chat-button { display:flex; align-items:center; gap:.4rem; border:1px solid #d5e0e8; border-radius:6px; background:#edf2f6; padding:.7rem; color:#008EAC; font-size:.875rem; font-weight:600; }
 .profile-head { display:flex; align-items:center; gap:1rem; }
+.profile-head-actions { display:flex; align-items:center; gap:.6rem; }
 .profile-avatar { display:flex; width:4rem; height:4rem; flex:0 0 auto; align-items:center; justify-content:center; border-radius:8px; background:#DDF5F7; color:#008EAC; }
 .setting-choice { display:flex; align-items:center; justify-content:space-between; border:1px solid var(--border); border-radius:7px; padding:.9rem; background:white; color:#52687a; font-weight:600; }
 .setting-choice.active { border-color:#008EAC; background:#E5F7F9; color:#008EAC; }
@@ -312,6 +313,7 @@ button:focus-visible,a:focus-visible { outline:3px solid #819eb6; outline-offset
 .upgrade-benefits li { display:flex; align-items:center; gap:.7rem; color:#3f4658; font-weight:650; }
 .upgrade-benefits svg { flex:none; color:#16845f; }
 .membership-card { margin-top:1.25rem; border:1px solid #dce2ef; border-radius:.85rem; padding:1.25rem; background:linear-gradient(135deg,#f8faff,#eef3ff); }
+.subscription-page { display:grid; align-content:start; gap:1.25rem; }.subscription-page .membership-card { margin-top:0; }
 .membership-card.is-plus { border-color:#d8b54f; background:linear-gradient(135deg,#fff9e8,#eef5ff 68%); }
 .membership-top { display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:.8rem; }
 .membership-icon { display:flex; width:2.8rem; height:2.8rem; align-items:center; justify-content:center; border-radius:.8rem; background:#008EAC; color:white; }
@@ -355,6 +357,7 @@ button:focus-visible,a:focus-visible { outline:3px solid #819eb6; outline-offset
   .filter-grid>div:first-child { grid-row:auto; }
   .filter-grid>div:last-child { grid-column:auto; }
   .profile-head { align-items:flex-start; }
+  .profile-head-actions { align-items:stretch; flex-direction:column; }
   .logout-button { margin-left:auto; }
   .loan-row { align-items:flex-start; gap:.65rem; padding:.8rem; }
   .loan-row>div:first-child { width:2.8rem; height:2.8rem; }
