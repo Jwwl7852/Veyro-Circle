@@ -40,6 +40,7 @@ export function PlacePicker({ value, onChange, country, lang, label }: {
 
 export function ProfileForm({ profile, lang, onSave, authenticatedEmail }: { profile: Profile | null; lang: Lang; onSave: (p: Profile)=>void; authenticatedEmail?: string }) {
   const da = lang === "da";
+  const [editing, setEditing] = useState(!profile);
   const [name, setName] = useState(profile?.name || "");
   const [email, setEmail] = useState(authenticatedEmail || profile?.email || "");
   const [password, setPassword] = useState("");
@@ -67,8 +68,12 @@ export function ProfileForm({ profile, lang, onSave, authenticatedEmail }: { pro
     if (!taxRead) {
       setError(da ? "Læs skatteinformationen, og bekræft, at du har læst den." : "Läs skatteinformationen och bekräfta att du har läst den."); return;
     }
-    onSave({name: name.trim(), email: email.trim().toLowerCase(), phone: phone.trim(), street: street.trim(), place: place!, taxAcknowledgement: {version: TAX_GUIDANCE_VERSION, country, acceptedAt: new Date().toISOString()}}); setError("");
+    onSave({name: name.trim(), email: email.trim().toLowerCase(), phone: phone.trim(), street: street.trim(), place: place!, taxAcknowledgement: {version: TAX_GUIDANCE_VERSION, country, acceptedAt: new Date().toISOString()}}); setError(""); setEditing(false);
   }}>
+    {profile && !editing ? <>
+      <div className="saved-profile-heading"><div><h2>{da ? "Konto og oplysninger" : "Konto och uppgifter"}</h2><p>{da ? "Dine oplysninger er gemt." : "Dina uppgifter är sparade."}</p></div><Button type="button" variant="outline" onClick={()=>setEditing(true)}>{da ? "Rediger oplysninger" : "Redigera uppgifter"}</Button></div>
+      <dl className="saved-profile-details"><div><dt>{da ? "Fulde navn" : "Fullständigt namn"}</dt><dd>{profile.name}</dd></div><div><dt>E-mail</dt><dd>{profile.email}</dd></div><div><dt>{da ? "Telefonnummer" : "Telefonnummer"}</dt><dd>{profile.phone}</dd></div><div><dt>{da ? "Adresse" : "Adress"}</dt><dd>{profile.street}<br />{profile.place.postcode} {profile.place.city}, {profile.place.country}</dd></div></dl>
+    </> : <>
     <h2>{profile ? (da ? "Konto og oplysninger" : "Konto och uppgifter") : (da ? "Opret konto og profil" : "Skapa konto och profil")}</h2>
     <p>{da ? "Din e-mail er dit login, så du behøver ikke et separat brugernavn. Adresse, postnummer og by er obligatoriske." : "Din e-postadress är din inloggning, så du behöver inget separat användarnamn. Adress, postnummer och ort är obligatoriska."}</p>
     <div className="profile-fields-grid">
@@ -87,8 +92,9 @@ export function ProfileForm({ profile, lang, onSave, authenticatedEmail }: { pro
       <Checkbox id={taxCheckId} required checked={taxRead} onCheckedChange={checked=>setTaxRead(checked === true)} aria-describedby="tax-heading" />
       <label htmlFor={taxCheckId}>{da ? `Jeg har læst skatteinformationen for ${country === "DK" ? "Danmark" : "Sverige"} og ved, at jeg selv skal sikre korrekt oplysning og betaling af skat og eventuel moms.` : `Jag har läst skatteinformationen för ${country === "DK" ? "Danmark" : "Sverige"} och vet att jag själv ansvarar för korrekt redovisning och betalning av skatt och eventuell moms.`} *</label>
     </div></> : <p className="tax-country-prompt">{da ? "Vælg dit profilland for at se postnumre, byer og de relevante skatteregler." : "Välj ditt profilland för att se postnummer, orter och relevanta skatteregler."}</p>}
-    <p className="demo-note">{authenticatedEmail ? (da ? "Profilen gemmes sikkert i Firestore. Din adgangskode håndteres kun af Firebase Authentication." : "Profilen sparas säkert i Firestore. Ditt lösenord hanteras bara av Firebase Authentication.") : (da ? "Demotilstand: Firebase er ikke konfigureret, så profilen gemmes kun i denne session." : "Demoläge: Firebase är inte konfigurerat, så profilen sparas bara i den här sessionen.")}</p>
+    {!authenticatedEmail && <p className="demo-note">{da ? "Demotilstand: Firebase er ikke konfigureret, så profilen gemmes kun i denne session." : "Demoläge: Firebase är inte konfigurerat, så profilen sparas bara i den här sessionen."}</p>}
     {error && <p role="alert" className="form-error">{error}</p>}
-    <Button type="submit" disabled={!country || !taxRead} className="h-12 rounded-xl">{profile || authenticatedEmail ? (da ? "Gem profil" : "Spara profil") : (da ? "Opret testkonto" : "Skapa testkonto")}</Button>
+    <div className="profile-form-actions">{profile && <Button type="button" variant="outline" onClick={()=>{setEditing(false);setError("");}}>{da ? "Annuller" : "Avbryt"}</Button>}<Button type="submit" disabled={!country || !taxRead} className="h-12 rounded-xl">{profile ? (da ? "Gem ændringer" : "Spara ändringar") : authenticatedEmail ? (da ? "Gem profil" : "Spara profil") : (da ? "Opret testkonto" : "Skapa testkonto")}</Button></div>
+    </>}
   </form>;
 }
