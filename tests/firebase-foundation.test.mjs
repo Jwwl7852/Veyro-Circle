@@ -17,6 +17,14 @@ test("Firestore rules bind profiles and listing ownership to auth uid", async ()
   assert.match(rules, /subscriptionPlan == resource\.data\.subscriptionPlan/);
 });
 
+test("Firestore chat is restricted to agreement participants and immutable messages", async () => {
+  const rules = await readFile(new URL("../firestore.rules", import.meta.url), "utf8");
+  assert.match(rules, /match \/messages\/\{messageId\}/);
+  assert.match(rules, /request\.auth\.uid in get\(/);
+  assert.match(rules, /request\.resource\.data\.senderUid == request\.auth\.uid/);
+  assert.match(rules, /allow update, delete: if false/);
+});
+
 test("Storage rules restrict image writes by uid, type and size", async () => {
   const rules = await readFile(new URL("../storage.rules", import.meta.url), "utf8");
   assert.match(rules, /request\.auth\.uid == uid/);
