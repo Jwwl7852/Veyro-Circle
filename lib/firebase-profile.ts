@@ -21,6 +21,7 @@ export async function loadCircleProfile(uid: string): Promise<CircleCloudProfile
     uid,
     name: data.name,
     email: data.email,
+    phone: typeof data.phone === "string" ? data.phone : "",
     street: data.street,
     place: data.place,
     taxAcknowledgement: data.taxAcknowledgement,
@@ -44,6 +45,7 @@ export async function saveCircleProfile(uid: string, profile: Profile, preferred
     uid,
     name: profile.name,
     email: profile.email,
+    phone: profile.phone,
     street: profile.street,
     place: profile.place,
     taxAcknowledgement: profile.taxAcknowledgement ?? null,
@@ -51,4 +53,3 @@ export async function saveCircleProfile(uid: string, profile: Profile, preferred
     updatedAt: serverTimestamp(),
   }, { merge: true });
 }
-
