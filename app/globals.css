@@ -387,15 +387,24 @@ button:focus-visible,a:focus-visible { outline:3px solid #819eb6; outline-offset
 }
 @media (prefers-reduced-motion:reduce) { *,*::before,*::after { transition:none!important; animation:none!important; } }
 @media print {
-  @page { size:A4 portrait; margin:0; }
+  @page { size:A4 portrait; margin:8mm; }
   html,body { width:210mm!important; min-width:0!important; height:auto!important; overflow:visible!important; background:white!important; }
   body * { visibility:hidden!important; }
   [data-slot="dialog-overlay"] { display:none!important; }
-  .agreement-dialog { position:absolute!important; inset:0!important; width:210mm!important; max-width:none!important; max-height:none!important; margin:0!important; transform:none!important; overflow:visible!important; border:0!important; border-radius:0!important; padding:0!important; background:white!important; box-shadow:none!important; }
+  .agreement-dialog { position:absolute!important; inset:0 auto auto 0!important; width:194mm!important; max-width:194mm!important; max-height:none!important; margin:0!important; translate:none!important; transform:none!important; overflow:visible!important; border:0!important; border-radius:0!important; padding:0!important; background:white!important; box-shadow:none!important; }
   .print-agreement,.print-agreement * { visibility:visible!important; }
-  .print-agreement { position:static!important; width:210mm!important; min-height:297mm; border:0; border-radius:0; padding:14mm; print-color-adjust:exact; -webkit-print-color-adjust:exact; }
+  .print-agreement { position:static!important; width:194mm!important; max-width:194mm!important; min-height:0!important; overflow:hidden!important; border:0; border-radius:0; padding:0!important; font-size:9.5pt; line-height:1.35; overflow-wrap:anywhere; print-color-adjust:exact; -webkit-print-color-adjust:exact; }
   .no-print,[data-slot="dialog-close"] { display:none!important; }
   .paper-signature-line { display:block!important; }
-  .agreement-parties,.agreement-signatures,.agreement-facts { grid-template-columns:1fr 1fr; }
-  .agreement-legal { break-inside:avoid; }
+  .agreement-header { padding-bottom:6mm; }
+  .agreement-parties,.agreement-signatures,.agreement-facts { grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:4mm; margin-top:4mm; }
+  .agreement-parties section,.agreement-signatures section { min-width:0; padding:3mm; }
+  .agreement-facts { gap:0; }
+  .agreement-facts div { min-width:0; padding:2.5mm 3mm; }
+  .agreement-terms,.agreement-id-check { margin-top:4mm; }
+  .agreement-terms li+li { margin-top:2mm; }
+  .agreement-id-check { padding:3mm; }
+  .agreement-signatures section { min-height:35mm; }
+  .paper-signature-line { padding-top:17mm; }
+  .agreement-legal { margin-top:3mm; padding:2.5mm; break-inside:avoid; }
 }
