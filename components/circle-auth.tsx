@@ -20,7 +20,17 @@ function friendlyError(error: unknown, lang: Lang) {
   if (code.includes("email-already-in-use")) return da ? "E-mailadressen er allerede i brug." : "E-postadressen används redan.";
   if (code.includes("weak-password")) return da ? "Vælg en stærkere adgangskode på mindst 8 tegn." : "Välj ett starkare lösenord med minst 8 tecken.";
   if (code.includes("too-many-requests")) return da ? "For mange forsøg. Vent lidt og prøv igen." : "För många försök. Vänta en stund och försök igen.";
+  if (code.includes("unauthorized-continue-uri")) return da ? "Circle-domænet er ikke godkendt i Firebase. Tilføj veyro-circle.netlify.app under Authentication → Settings → Authorized domains." : "Circle-domänen är inte godkänd i Firebase. Lägg till veyro-circle.netlify.app under Authentication → Settings → Authorized domains.";
+  if (code.includes("invalid-continue-uri")) return da ? "Returadressen til Circle er ugyldig. Kontakt support." : "Returadressen till Circle är ogiltig. Kontakta support.";
   return da ? "Handlingen kunne ikke gennemføres. Prøv igen." : "Åtgärden kunde inte genomföras. Försök igen.";
+}
+
+function prepareAuthEmail(lang: Lang) {
+  if (auth) auth.languageCode = lang === "da" ? "da" : "sv";
+  return {
+    url: `${window.location.origin}/`,
+    handleCodeInApp: false,
+  };
 }
 
 export function useCircleAuth() {
@@ -67,9 +77,10 @@ export function CircleAuthScreen({ lang, setLang }: { lang: Lang; setLang: (lang
       if (mode === "register") {
         const credential = await createUserWithEmailAndPassword(auth, email.trim(), password);
         await updateProfile(credential.user, { displayName: name.trim() });
-        await sendEmailVerification(credential.user);
+        await sendEmailVerification(credential.user, prepareAuthEmail(lang));
       }
       if (mode === "reset") {
+        prepareAuthEmail(lang);
         await sendPasswordResetEmail(auth, email.trim());
         setMessage(da ? "Vi har sendt et link til nulstilling af adgangskoden." : "Vi har skickat en länk för att återställa lösenordet.");
       }
@@ -117,6 +128,26 @@ export function CircleAuthScreen({ lang, setLang }: { lang: Lang; setLang: (lang
 
 export function EmailVerificationScreen({ lang, user }: { lang: Lang; user: User }) {
   const [sent, setSent] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [error, setError] = useState("");
   const da = lang === "da";
-  return <main className="auth-page"><section className="auth-brand"><img src="/branding/veyro-systems-logo.png" alt="Veyro Systems" /><p>Veyro Circle</p><small>{da ? "Et produkt fra Veyro Systems ApS" : "En produkt från Veyro Systems ApS"}</small></section><section className="auth-card verification-card"><CheckCircle2 size={38} /><h1>{da ? "Bekræft din e-mail" : "Bekräfta din e-post"}</h1><p>{da ? `Vi har sendt en bekræftelsesmail til ${user.email ?? "din e-mail"}. Åbn linket og genindlæs derefter siden.` : `Vi har skickat ett bekräftelsemail till ${user.email ?? "din e-post"}. Öppna länken och ladda sedan om sidan.`}</p><Button onClick={async()=>{await user.reload(); window.location.reload();}}>{da ? "Jeg har bekræftet" : "Jag har bekräftat"}</Button><button className="text-link" onClick={async()=>{await sendEmailVerification(user);setSent(true);}}>{sent ? (da ? "Mailen er sendt igen" : "Mailet har skickats igen") : (da ? "Send mailen igen" : "Skicka mailet igen")}</button><button className="text-link" onClick={circleSignOut}>{da ? "Log ud" : "Logga ut"}</button></section></main>;
+  async function checkVerification() {
+    setChecking(true); setError("");
+    try {
+      await user.reload();
+      if (user.emailVerified) window.location.reload();
+      else setError(da ? "E-mailen er endnu ikke bekræftet. Åbn linket i mailen først." : "E-postadressen är ännu inte bekräftad. Öppna länken i mailet först.");
+    } catch (reason) { setError(friendlyError(reason, lang)); }
+    finally { setChecking(false); }
+  }
+  async function resendVerification() {
+    setBusy(true); setSent(false); setError("");
+    try {
+      await sendEmailVerification(user, prepareAuthEmail(lang));
+      setSent(true);
+    } catch (reason) { setError(friendlyError(reason, lang)); }
+    finally { setBusy(false); }
+  }
+  return <main className="auth-page"><section className="auth-brand"><img src="/branding/veyro-systems-logo.png" alt="Veyro Systems" /><p>Veyro Circle</p><small>{da ? "Et produkt fra Veyro Systems ApS" : "En produkt från Veyro Systems ApS"}</small></section><section className="auth-card verification-card"><CheckCircle2 size={38} /><h1>{da ? "Bekræft din e-mail" : "Bekräfta din e-post"}</h1><p>{da ? `Vi sender bekræftelsesmailen til ${user.email ?? "din e-mail"}. Åbn linket i mailen, og vend derefter tilbage hertil.` : `Vi skickar bekräftelsemailet till ${user.email ?? "din e-post"}. Öppna länken i mailet och gå sedan tillbaka hit.`}</p><p className="verification-help">{da ? "Kan du ikke se mailen? Tjek Spam/Uønsket post og fanen Promoveringer. Det kan tage et par minutter." : "Ser du inte mailet? Kontrollera skräppost och fliken Kampanjer. Det kan ta ett par minuter."}</p>{error && <p className="auth-error" role="alert"><AlertCircle size={17} />{error}</p>}{sent && <p className="auth-success" role="status"><CheckCircle2 size={17} />{da ? "En ny bekræftelsesmail er sendt. Tjek også Spam/Uønsket post." : "Ett nytt bekräftelsemail har skickats. Kontrollera även skräpposten."}</p>}<Button disabled={checking} onClick={checkVerification}>{checking && <LoaderCircle className="animate-spin" size={18} />}{da ? "Jeg har bekræftet" : "Jag har bekräftat"}</Button><button className="text-link" disabled={busy} onClick={resendVerification}>{busy ? (da ? "Sender…" : "Skickar…") : (da ? "Send en ny mail" : "Skicka ett nytt mail")}</button><button className="text-link" onClick={circleSignOut}>{da ? "Log ud" : "Logga ut"}</button></section></main>;
 }
