@@ -345,7 +345,7 @@ export default function HomePage() {
       const updated = {...loan, saved:true};
       setLoans(items => items.map(item => item.id === loan.id ? updated : item)); setAgreementLoan(updated);
       toast.success(lang === "da" ? "Aftalen er gemt på din konto i 12 måneder." : "Avtalet har sparats på ditt konto i 12 månader.");
-    } catch { toast.error(lang === "da" ? "Aftalen kunne ikke gemmes. Kontrollér Firebase-reglerne og prøv igen." : "Avtalet kunde inte sparas. Kontrollera Firebase-reglerna och försök igen."); }
+    } catch (error) { toast.error(error instanceof Error ? error.message : (lang === "da" ? "Aftalen kunne ikke gemmes. Prøv igen." : "Avtalet kunde inte sparas. Försök igen.")); }
     finally { setAgreementSaving(false); }
   }
 
