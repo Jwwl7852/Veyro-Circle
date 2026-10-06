@@ -454,7 +454,7 @@ export default function HomePage() {
 
           {tab === "items" && <ItemsView lang={lang} profile={profile} listings={listings.filter(item => item.owned)} plan={listingPlan} onAdd={openAdd} onEdit={openEdit} onDelete={setPendingDelete} />}
           {tab === "requests" && <RequestsView t={t} loans={loans} lang={lang} loadError={agreementsError} onChat={() => toast.info(lang === "da" ? "Beskeder åbner her" : "Meddelanden öppnas här")} onAgreement={setAgreementLoan} />}
-          {tab === "profile" && <ProfileView t={t} lang={lang} setLang={setLang} profile={profile} authenticatedEmail={user?.email || undefined} onSave={saveProfile}
+          {tab === "profile" && <ProfileView lang={lang} profile={profile} authenticatedEmail={user?.email || undefined} onSave={saveProfile}
             onLogout={logout} onSubscription={() => setTab("subscription")} />}
           {tab === "subscription" && <SubscriptionView lang={lang} plan={listingPlan} used={listings.filter(item => item.owned).length} onBack={() => setTab("profile")} onUpgrade={() => setShowUpgrade(true)} onManage={() => billing("portal")} />}
         </section>
@@ -694,15 +694,14 @@ function LoanRow({ title, owner, status, statusClass, icon: Icon, onChat, chatLa
   return <article className="loan-row"><div className="flex size-16 shrink-0 items-center justify-center rounded-xl bg-[#eef0f8]"><Icon size={31} className="text-[#008EAC]" /></div><div className="min-w-0 flex-1"><h3 className="truncate font-semibold">{title}</h3><p className="mt-1 text-sm text-[#73778b]">{owner} · {dates}</p><span className={`loan-status ${statusClass}`}>{status}</span></div><button onClick={onChat} className="chat-button"><MessageCircle size={18} /><span className="hidden sm:inline">{chatLabel}</span></button></article>;
 }
 
-function ProfileView({ t, lang, setLang, profile, authenticatedEmail, onSave, onLogout, onSubscription }: {
-  t: typeof copy.da; lang: Lang; setLang: (lang: Lang) => void; profile: Profile | null; onSave: (p: Profile)=>void;
+function ProfileView({ lang, profile, authenticatedEmail, onSave, onLogout, onSubscription }: {
+  lang: Lang; profile: Profile | null; onSave: (p: Profile)=>void;
   authenticatedEmail?: string; onLogout: () => void;
   onSubscription: () => void;
 }) {
   return <div className="content-panel">
     <div className="profile-head"><span className="profile-avatar"><CircleUserRound size={32} /></span><div className="min-w-0 flex-1"><p className="eyebrow">{lang === "da" ? "Din konto" : "Ditt konto"}</p><h1 className="page-title">{profile?.name || (lang === "da" ? "Log ind eller opret konto" : "Logga in eller skapa konto")}</h1>{profile && <><p className="mt-2 text-sm">{profile.email}</p><p className="mt-1 text-sm">{profile.place.postcode} {profile.place.city} · {profile.place.country}</p></>}</div>{profile && <div className="profile-head-actions"><Button type="button" variant="outline" onClick={onSubscription}><Crown size={17} />{lang === "da" ? "Mit abonnement" : "Min prenumeration"}</Button><Button type="button" variant="outline" className="logout-button" onClick={onLogout}><LogOut size={17} />{lang === "da" ? "Log ud" : "Logga ut"}</Button></div>}</div>
     <ProfileForm profile={profile} lang={lang} authenticatedEmail={authenticatedEmail} onSave={onSave} />
-    <section className="mt-5 rounded-xl border border-[#e0e3ec] bg-white p-5 sm:p-6"><h2 className="text-lg font-bold">{t.language}</h2><div className="mt-4 grid grid-cols-2 gap-3"><button className={`setting-choice ${lang === "da" ? "active" : ""}`} onClick={() => setLang("da")}>🇩🇰 Dansk{lang === "da" && <Check size={17} />}</button><button className={`setting-choice ${lang === "sv" ? "active" : ""}`} onClick={() => setLang("sv")}>🇸🇪 Svenska{lang === "sv" && <Check size={17} />}</button></div></section>
   </div>;
 }
 
