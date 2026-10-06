@@ -30,5 +30,26 @@ service cloud.firestore {
       allow update: if signedIn() && resource.data.ownerUid == request.auth.uid && request.resource.data.ownerUid == resource.data.ownerUid;
       allow delete: if signedIn() && resource.data.ownerUid == request.auth.uid;
     }
+    match /agreements/{agreementId} {
+      allow read: if signedIn() && request.auth.uid in resource.data.participantUids;
+      allow create: if signedIn()
+        && request.resource.data.borrowerUid == request.auth.uid
+        && request.resource.data.lenderUid is string
+        && request.resource.data.lenderUid != request.auth.uid
+        && request.resource.data.participantUids.size() == 2
+        && request.resource.data.borrowerUid in request.resource.data.participantUids
+        && request.resource.data.lenderUid in request.resource.data.participantUids
+        && !request.resource.data.keys().hasAny(['borrowerSignature', 'lenderSignature']);
+      allow update: if signedIn()
+        && request.auth.uid in resource.data.participantUids
+        && request.resource.data.borrowerUid == resource.data.borrowerUid
+        && request.resource.data.lenderUid == resource.data.lenderUid
+        && request.resource.data.participantUids == resource.data.participantUids
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          request.auth.uid == resource.data.borrowerUid ? 'borrowerSignature' : 'lenderSignature',
+          'updatedAt'
+        ]);
+      allow delete: if false;
+    }
   }
 }
