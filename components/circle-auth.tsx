@@ -6,7 +6,7 @@ import {
   sendPasswordResetEmail, signInWithEmailAndPassword, signOut, updateProfile,
   type User,
 } from "firebase/auth";
-import { AlertCircle, CheckCircle2, KeyRound, LoaderCircle, LogIn, UserPlus } from "lucide-react";
+import { AlertCircle, CheckCircle2, KeyRound, LoaderCircle, LogIn, MapPin, PackageCheck, ShieldCheck, UserPlus } from "lucide-react";
 import { auth, firebaseConfigured, missingFirebaseConfig } from "@/lib/firebase-client";
 import { Button } from "@/components/ui/button";
 import type { Lang } from "@/lib/marketplace";
@@ -78,7 +78,21 @@ export function CircleAuthScreen({ lang, setLang }: { lang: Lang; setLang: (lang
   }
 
   return <main className="auth-page">
-    <section className="auth-brand"><img src="/branding/veyro-systems-logo.png" alt="Veyro Systems" /><p>Veyro Circle</p><small>{da ? "Et produkt fra Veyro Systems ApS" : "En produkt från Veyro Systems ApS"}</small></section>
+    <section className="auth-brand">
+      <img className="auth-company-logo" src="/branding/veyro-systems-logo.png" alt="Veyro Systems" />
+      <div className="auth-promo-image" role="img" aria-label={da ? "Naboer der deler ting i lokalområdet" : "Grannar som delar saker i närområdet"}><span>{da ? "Del mere · køb mindre" : "Dela mer · köp mindre"}</span></div>
+      <div className="auth-promo-copy">
+        <p className="auth-product-name">Veyro Circle</p>
+        <h2>{da ? "Tingene findes allerede. Del dem med hinanden." : "Sakerna finns redan. Dela dem med varandra."}</h2>
+        <p>{da ? "Circle gør det enkelt at finde, låne og leje ting i dit lokalområde – eller dele det, du ikke selv bruger hver dag." : "Circle gör det enkelt att hitta, låna och hyra saker i ditt närområde – eller dela det du inte använder varje dag."}</p>
+        <ul>
+          <li><PackageCheck /><span><b>{da ? "Lån gratis eller lej" : "Låna gratis eller hyr"}</b>{da ? "Find værktøj, trailer, fritidsudstyr og meget mere." : "Hitta verktyg, släp, fritidsutrustning och mycket mer."}</span></li>
+          <li><MapPin /><span><b>{da ? "Find ting i nærheden" : "Hitta saker i närheten"}</b>{da ? "Søg efter kategori, land og afstand." : "Sök efter kategori, land och avstånd."}</span></li>
+          <li><ShieldCheck /><span><b>{da ? "Lav en tydelig aftale" : "Skapa ett tydligt avtal"}</b>{da ? "Aftal periode, pris, depositum og underskrift." : "Avtala period, pris, deposition och signatur."}</span></li>
+        </ul>
+      </div>
+      <small>{da ? "Et produkt fra Veyro Systems ApS" : "En produkt från Veyro Systems ApS"}</small>
+    </section>
     <section className="auth-card">
       <div className="auth-language"><button className={lang === "da" ? "active" : ""} onClick={()=>setLang("da")}>Dansk</button><button className={lang === "sv" ? "active" : ""} onClick={()=>setLang("sv")}>Svenska</button></div>
       <div><p className="eyebrow">Veyro Circle</p><h1>{mode === "login" ? (da ? "Log ind" : "Logga in") : mode === "register" ? (da ? "Opret konto" : "Skapa konto") : (da ? "Glemt adgangskode" : "Glömt lösenord")}</h1><p>{mode === "reset" ? (da ? "Indtast din e-mail, så sender vi et sikkert nulstillingslink." : "Ange din e-postadress så skickar vi en säker återställningslänk.") : (da ? "Del, lån og lej ting i dit lokalområde." : "Dela, låna och hyr saker i ditt närområde.")}</p></div>
