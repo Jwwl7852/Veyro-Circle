@@ -64,6 +64,13 @@ test("registration requires name, phone, street/number and recognized postcode/c
   assert.equal(m.validProfile("Test Person", "Testvej 12", null, "+45 12 34 56 78"), false);
   assert.equal(m.validProfile("Test Person", "Testvej 12", m.defaultPlace, "123"), false);
 });
+test("address check works for recognized Danish and Swedish postcodes", () => {
+  const dk = m.seedPlace("Jystrup", "DK"), se = m.seedPlace("Malmö", "SE");
+  assert.equal(m.validAddress("Skellet 8", dk), true);
+  assert.equal(m.validAddress("Storgatan 12A", se), true);
+  assert.equal(m.validAddress("Storgatan", se), false);
+  assert.equal(m.validAddress("Skellet 8", {...dk, city:"Forkert by"}), false);
+});
 test("listing plans allow 1 free and never more than 20 active things", () => {
   assert.equal(m.FREE_LISTING_LIMIT, 1);
   assert.equal(m.PLUS_LISTING_LIMIT, 20);
