@@ -406,6 +406,15 @@ export default function HomePage() {
             </section>}
 
             <section className="search-filters" aria-label={lang === "da" ? "Søgeområde og pris" : "Sökområde och pris"}>
+              <div className="specific-search">
+                <label htmlFor="specific-listing-search">{lang === "da" ? "Hvad søger du efter?" : "Vad söker du efter?"}</label>
+                <div>
+                  <Search size={20} aria-hidden="true" />
+                  <input id="specific-listing-search" type="search" value={query} onChange={event => { setQuery(event.target.value); setTab("search"); }} placeholder={lang === "da" ? "Søg fx efter boremaskine, trailer eller tæpperenser" : "Sök t.ex. efter borrmaskin, släp eller mattvätt"} />
+                  {query && <button type="button" onClick={() => setQuery("")} aria-label={lang === "da" ? "Ryd søgning" : "Rensa sökning"}><X size={18} /></button>}
+                </div>
+                <small>{lang === "da" ? "Søger i annoncens navn, beskrivelse og by." : "Söker i annonsens namn, beskrivning och ort."}</small>
+              </div>
               <div className="filter-grid">
                 <PlacePicker value={origin} onChange={setOrigin} lang={lang} label={lang === "da" ? "Søg fra postnummer eller by" : "Sök från postnummer eller ort"} />
                 <div className="place-field"><label id="radius-label">Radius</label>
