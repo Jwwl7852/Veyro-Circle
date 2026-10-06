@@ -33,6 +33,8 @@ test("profiles use server-side duplicate control and agreement retention is 12 m
   assert.match(rules, /allow create, update, delete: if false/);
   assert.match(profileApi, /createHmac\("sha256"/);
   assert.match(profileApi, /accountIdentityProfiles/);
+  assert.match(profileApi, /firestoreDocumentName/);
+  assert.doesNotMatch(profileApi, /name:firestoreDocumentUrl/);
   assert.match(agreementsApi, /retention\.setMonth\(retention\.getMonth\(\)\+12\)/);
   assert.match(agreementsApi, /verifyFirebaseRequest/);
   assert.match(agreementsApi, /ARRAY_CONTAINS/);

@@ -51,9 +51,13 @@ function documentUrl(uid: string) {
   return `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(serverConfig("NEXT_PUBLIC_FIREBASE_PROJECT_ID"))}/databases/(default)/documents/users/${encodeURIComponent(uid)}`;
 }
 
-export function firestoreDocumentUrl(path: string) {
+export function firestoreDocumentName(path: string) {
   const encodedPath = path.split("/").map(encodeURIComponent).join("/");
-  return `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(serverConfig("NEXT_PUBLIC_FIREBASE_PROJECT_ID"))}/databases/(default)/documents/${encodedPath}`;
+  return `projects/${encodeURIComponent(serverConfig("NEXT_PUBLIC_FIREBASE_PROJECT_ID"))}/databases/(default)/documents/${encodedPath}`;
+}
+
+export function firestoreDocumentUrl(path: string) {
+  return `https://firestore.googleapis.com/v1/${firestoreDocumentName(path)}`;
 }
 
 export async function getFirestoreDocument(path: string) {

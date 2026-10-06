@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 import { NextResponse } from "next/server";
-import { commitFirestoreWrites, firestoreDocumentUrl, getFirestoreDocument, verifyFirebaseRequest, type FirestoreField } from "@/lib/firebase-server";
+import { commitFirestoreWrites, firestoreDocumentName, getFirestoreDocument, verifyFirebaseRequest, type FirestoreField } from "@/lib/firebase-server";
 import { serverConfig } from "@/lib/server-config";
 
 type Payload = {
@@ -58,7 +58,7 @@ export async function POST(request: Request) {
     const writes: unknown[] = [];
     const reserve = (path:string, current:typeof phoneDoc) => {
       if (current) return;
-      writes.push({update:{name:firestoreDocumentUrl(path),fields:{uid:text(identity.localId),createdAt:timestamp(now)}},currentDocument:{exists:false}});
+      writes.push({update:{name:firestoreDocumentName(path),fields:{uid:text(identity.localId),createdAt:timestamp(now)}},currentDocument:{exists:false}});
     };
     reserve(phonePath, phoneDoc); reserve(compositePath, compositeDoc);
     const userFields:Record<string,FirestoreField> = {
@@ -68,9 +68,9 @@ export async function POST(request: Request) {
     };
     if (body.taxAcknowledgement?.version && body.taxAcknowledgement.acceptedAt) userFields.taxAcknowledgement = map({version:text(body.taxAcknowledgement.version),country:text(body.taxAcknowledgement.country ?? place.country!),acceptedAt:text(body.taxAcknowledgement.acceptedAt)});
     if (!existing) { userFields.createdAt = timestamp(now); userFields.subscriptionPlan = text("free"); }
-    writes.push({update:{name:firestoreDocumentUrl(`users/${identity.localId}`),fields:userFields},updateMask:{fieldPaths:Object.keys(userFields)}});
-    if (oldPhoneKey && oldPhoneKey !== phoneKey && oldPhoneDoc?.fields?.uid?.stringValue === identity.localId) writes.push({delete:firestoreDocumentUrl(`accountIdentityPhones/${oldPhoneKey}`)});
-    if (oldCompositeKey && oldCompositeKey !== compositeKey && oldCompositeDoc?.fields?.uid?.stringValue === identity.localId) writes.push({delete:firestoreDocumentUrl(`accountIdentityProfiles/${oldCompositeKey}`)});
+    writes.push({update:{name:firestoreDocumentName(`users/${identity.localId}`),fields:userFields},updateMask:{fieldPaths:Object.keys(userFields)}});
+    if (oldPhoneKey && oldPhoneKey !== phoneKey && oldPhoneDoc?.fields?.uid?.stringValue === identity.localId) writes.push({delete:firestoreDocumentName(`accountIdentityPhones/${oldPhoneKey}`)});
+    if (oldCompositeKey && oldCompositeKey !== compositeKey && oldCompositeDoc?.fields?.uid?.stringValue === identity.localId) writes.push({delete:firestoreDocumentName(`accountIdentityProfiles/${oldCompositeKey}`)});
     await commitFirestoreWrites(writes);
     return NextResponse.json({ok:true});
   } catch (cause) {
