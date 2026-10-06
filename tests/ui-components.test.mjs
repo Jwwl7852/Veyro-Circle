@@ -48,6 +48,14 @@ test("emits the catalog's animation and scrolling utilities", async () => {
   assert.match(css, /prefers-reduced-motion:\s*reduce/);
 });
 
+test("keeps the application width stable and prints agreements as A4", async () => {
+  const css = await readFile(path.join(root, "app", "globals.css"), "utf8");
+  assert.match(css, /html\s*\{\s*scrollbar-gutter:stable/);
+  assert.match(css, /@page\s*\{\s*size:A4 portrait/);
+  assert.match(css, /\.agreement-dialog\s*\{[^}]*position:absolute!important/);
+  assert.match(css, /\.print-agreement\s*\{[^}]*position:static!important/);
+});
+
 test("forwards progress semantics to the primitive", async () => {
   const { Progress } = await vite.ssrLoadModule("/components/ui/progress.tsx");
   const html = renderToStaticMarkup(React.createElement(Progress, { value: 37 }));
