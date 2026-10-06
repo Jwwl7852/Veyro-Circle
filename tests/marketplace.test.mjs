@@ -56,12 +56,13 @@ test("rental period counts inclusive dates and handles invalid/DST/leap dates", 
   assert.equal(m.dayCount("",""), null);
   assert.equal(m.parseDailyPrice("50") * m.dayCount("2026-09-12","2026-09-14"), 15000);
 });
-test("registration requires name, street/number and recognized postcode/city", () => {
-  assert.equal(m.validProfile("Test Person", "Testvej 12", m.defaultPlace), true);
-  assert.equal(m.validProfile("", "Testvej 12", m.defaultPlace), false);
-  assert.equal(m.validProfile("Test Person", " ", m.defaultPlace), false);
-  assert.equal(m.validProfile("Test Person", "Testvej", m.defaultPlace), false);
-  assert.equal(m.validProfile("Test Person", "Testvej 12", null), false);
+test("registration requires name, phone, street/number and recognized postcode/city", () => {
+  assert.equal(m.validProfile("Test Person", "Testvej 12", m.defaultPlace, "+45 12 34 56 78"), true);
+  assert.equal(m.validProfile("", "Testvej 12", m.defaultPlace, "+45 12 34 56 78"), false);
+  assert.equal(m.validProfile("Test Person", " ", m.defaultPlace, "+45 12 34 56 78"), false);
+  assert.equal(m.validProfile("Test Person", "Testvej", m.defaultPlace, "+45 12 34 56 78"), false);
+  assert.equal(m.validProfile("Test Person", "Testvej 12", null, "+45 12 34 56 78"), false);
+  assert.equal(m.validProfile("Test Person", "Testvej 12", m.defaultPlace, "123"), false);
 });
 test("listing plans allow 1 free and never more than 20 active things", () => {
   assert.equal(m.FREE_LISTING_LIMIT, 1);
