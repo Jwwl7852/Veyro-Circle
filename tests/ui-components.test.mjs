@@ -51,6 +51,9 @@ test("emits the catalog's animation and scrolling utilities", async () => {
 test("keeps the application width stable and prints agreements as A4", async () => {
   const css = await readFile(path.join(root, "app", "globals.css"), "utf8");
   assert.match(css, /html\s*\{\s*scrollbar-gutter:stable/);
+  assert.match(css, /html,body\s*\{[^}]*overflow-x:clip/);
+  assert.match(css, /\.profile-head\s*\{[^}]*display:grid[^}]*grid-template-columns:minmax\(0,1fr\)/);
+  assert.match(css, /\[data-slot="dialog-content"\]\s*\{[^}]*max-height:calc\(100dvh - 1rem\)/);
   assert.match(css, /@page\s*\{\s*size:A4 portrait/);
   assert.match(css, /\.agreement-dialog\s*\{[^}]*position:absolute!important/);
   assert.match(css, /\.print-agreement\s*\{[^}]*position:static!important/);

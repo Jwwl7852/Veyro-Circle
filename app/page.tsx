@@ -366,8 +366,8 @@ export default function HomePage() {
   return (
     <main className="min-h-screen bg-[#F2F6F8] text-[#172936]">
       <Toaster position="top-center" richColors />
-      <header className="sticky top-0 z-40 border-b border-[#174354] bg-[#031725] text-white">
-        <div className="mx-auto flex h-20 max-w-[1440px] items-center gap-4 px-4 sm:px-6 lg:px-10">
+      <header className="app-header sticky top-0 z-40 border-b border-[#174354] bg-[#031725] text-white">
+        <div className="app-header-inner mx-auto flex h-20 max-w-[1440px] items-center gap-4 px-4 sm:px-6 lg:px-10">
           <button className="brand-lockup" onClick={() => setTab("home")} aria-label={lang === "da" ? "Veyro Circle hjem" : "Veyro Circle hem"}>
             <img src="/branding/veyro-systems-logo.png" alt="Veyro Systems" /><span>Circle</span>
           </button>
@@ -384,7 +384,7 @@ export default function HomePage() {
       </header>
 
       {!configured && <FirebaseSetupNotice lang={lang} />}
-      <div className="mx-auto grid max-w-[1440px] gap-7 px-4 pb-28 pt-6 sm:px-6 md:pb-10 lg:grid-cols-[220px_minmax(0,1fr)] lg:px-10 xl:grid-cols-[220px_minmax(0,1fr)_260px]">
+      <div className="app-main-grid mx-auto grid max-w-[1440px] gap-7 px-4 pb-28 pt-6 sm:px-6 md:pb-10 lg:grid-cols-[220px_minmax(0,1fr)] lg:px-10 xl:grid-cols-[220px_minmax(0,1fr)_260px]">
         <aside className="hidden lg:block">
           <div className="sticky top-24 space-y-6">
             <nav className="space-y-1" aria-label="Hovedmenu">
@@ -528,7 +528,7 @@ export default function HomePage() {
       </Dialog>
 
       <Dialog open={showRequest} onOpenChange={setShowRequest}>
-        <DialogContent className="rounded-xl sm:max-w-[520px]">
+        <DialogContent className="request-dialog max-h-[calc(100dvh-1rem)] overflow-y-auto rounded-xl sm:max-w-[520px]">
           <DialogHeader><DialogTitle className="text-2xl font-bold">{t.requestTitle}</DialogTitle><DialogDescription>{selected?.name}</DialogDescription></DialogHeader>
           <div className="grid gap-4 sm:grid-cols-2"><label className="field-label">{t.from}<input type="date" min={todayLocal()} value={from} onChange={e=>setFrom(e.target.value)} /></label><label className="field-label">{t.to}<input type="date" min={from || todayLocal()} value={to} onChange={e=>setTo(e.target.value)} /></label></div>
           <label className="field-label">{t.message}<textarea value={requestMessage} onChange={e=>setRequestMessage(e.target.value)} placeholder={lang === "da" ? "Fortæl kort, hvad du skal bruge tingen til." : "Berätta kort vad du behöver saken till."} rows={4} /></label>
@@ -562,7 +562,7 @@ export default function HomePage() {
       <ChatDialog loan={chatLoan} userUid={user?.uid || ""} lang={lang} onClose={() => setChatLoan(null)} />
 
       <Dialog open={showAdd} onOpenChange={open => { setShowAdd(open); if (!open) resetItemForm(); }}>
-        <DialogContent className="max-h-[92vh] overflow-y-auto rounded-xl sm:max-w-[560px]">
+        <DialogContent className="form-dialog max-h-[calc(100dvh-1rem)] overflow-y-auto rounded-xl sm:max-w-[560px]">
           <DialogHeader><DialogTitle className="text-2xl font-bold">{editingId !== null ? (lang === "da" ? "Rediger din ting" : "Redigera din sak") : t.addTitle}</DialogTitle><DialogDescription>{t.addDescription}</DialogDescription></DialogHeader>
           {editingId === null && <div className="listing-limit-inline"><span>{listingPlan === "plus" ? <Crown size={17} /> : <PackagePlus size={17} />}{listingPlan === "plus" ? "Veyro Circle Plus" : (lang === "da" ? "Gratis" : "Gratis")}</span><b>{listings.filter(item => item.owned).length + 1} / {listingLimit(listingPlan)}</b></div>}
           <div className="photo-uploader">
@@ -596,7 +596,7 @@ export default function HomePage() {
       </Dialog>
 
       <Dialog open={showUpgrade} onOpenChange={setShowUpgrade}>
-        <DialogContent className="rounded-xl sm:max-w-[520px]">
+        <DialogContent className="form-dialog max-h-[calc(100dvh-1rem)] overflow-y-auto rounded-xl sm:max-w-[520px]">
           <DialogHeader><DialogTitle className="flex items-center gap-3 text-2xl font-bold"><span className="plus-icon"><Crown size={23} /></span>Veyro Circle Plus</DialogTitle><DialogDescription>{lang === "da" ? "Du har brugt din gratisannonce. Med Plus kan du have op til 20 aktive ting ad gangen." : "Du har använt din gratisannons. Med Plus kan du ha upp till 20 aktiva saker samtidigt."}</DialogDescription></DialogHeader>
           <div className="upgrade-price"><strong>{profile?.place.country === "SE" ? "69 SEK" : "49 DKK"}</strong><span>{lang === "da" ? "om måneden" : "per månad"}</span></div>
           <ul className="upgrade-benefits">
@@ -775,7 +775,7 @@ function ProfileView({ lang, profile, authenticatedEmail, onSave, onLogout, onSu
   onSubscription: () => void;
 }) {
   return <div className="content-panel">
-    <div className="profile-head"><span className="profile-avatar"><CircleUserRound size={32} /></span><div className="min-w-0 flex-1"><p className="eyebrow">{lang === "da" ? "Din konto" : "Ditt konto"}</p><h1 className="page-title">{profile?.name || (lang === "da" ? "Log ind eller opret konto" : "Logga in eller skapa konto")}</h1>{profile && <><p className="mt-2 text-sm">{profile.email}</p><p className="mt-1 text-sm">{profile.place.postcode} {profile.place.city} · {profile.place.country}</p></>}</div>{profile && <div className="profile-head-actions"><Button type="button" variant="outline" onClick={onSubscription}><Crown size={17} />{lang === "da" ? "Mit abonnement" : "Min prenumeration"}</Button><Button type="button" variant="outline" className="logout-button" onClick={onLogout}><LogOut size={17} />{lang === "da" ? "Log ud" : "Logga ut"}</Button></div>}</div>
+    <div className="profile-head"><div className="profile-identity"><span className="profile-avatar"><CircleUserRound size={32} /></span><div className="min-w-0 flex-1"><p className="eyebrow">{lang === "da" ? "Din konto" : "Ditt konto"}</p><h1 className="page-title">{profile?.name || (lang === "da" ? "Log ind eller opret konto" : "Logga in eller skapa konto")}</h1>{profile && <><p className="mt-2 text-sm">{profile.email}</p><p className="mt-1 text-sm">{profile.place.postcode} {profile.place.city} · {profile.place.country}</p></>}</div></div>{profile && <div className="profile-head-actions"><Button type="button" variant="outline" onClick={onSubscription}><Crown size={17} />{lang === "da" ? "Mit abonnement" : "Min prenumeration"}</Button><Button type="button" variant="outline" className="logout-button" onClick={onLogout}><LogOut size={17} />{lang === "da" ? "Log ud" : "Logga ut"}</Button></div>}</div>
     <ProfileForm profile={profile} lang={lang} authenticatedEmail={authenticatedEmail} onSave={onSave} />
   </div>;
 }
