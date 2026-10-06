@@ -15,14 +15,14 @@ service cloud.firestore {
     }
     match /users/{uid} {
       allow read: if owns(uid);
-      allow create: if owns(uid)
-        && request.resource.data.uid == uid
-        && request.resource.data.email == request.auth.token.email
-        && request.resource.data.verificationStatus == 'pending'
-        && request.resource.data.subscriptionPlan == 'free'
-        && !request.resource.data.keys().hasAny(['roles', 'subscriptionStatus', 'stripeCustomerId', 'stripeSubscriptionId']);
-      allow update: if owns(uid) && protectedUnchanged();
-      allow delete: if false;
+      // Profiler skrives kun via serveren, som håndhæver én konto pr. abonnent.
+      allow create, update, delete: if false;
+    }
+    match /accountIdentityPhones/{fingerprint} {
+      allow read, write: if false;
+    }
+    match /accountIdentityProfiles/{fingerprint} {
+      allow read, write: if false;
     }
     match /listings/{listingId} {
       allow read: if true;
@@ -34,11 +34,16 @@ service cloud.firestore {
       allow read: if signedIn() && request.auth.uid in resource.data.participantUids;
       allow create: if signedIn()
         && request.resource.data.borrowerUid == request.auth.uid
-        && request.resource.data.lenderUid is string
-        && request.resource.data.lenderUid != request.auth.uid
-        && request.resource.data.participantUids.size() == 2
+        && request.resource.data.participantUids.size() >= 1
+        && request.resource.data.participantUids.size() <= 2
         && request.resource.data.borrowerUid in request.resource.data.participantUids
-        && request.resource.data.lenderUid in request.resource.data.participantUids
+        && (!request.resource.data.keys().hasAny(['lenderUid']) || (
+          request.resource.data.lenderUid is string
+          && request.resource.data.lenderUid != request.auth.uid
+          && request.resource.data.lenderUid in request.resource.data.participantUids
+        ))
+        && request.resource.data.retentionUntil is timestamp
+        && request.resource.data.retentionUntil > request.time
         && !request.resource.data.keys().hasAny(['borrowerSignature', 'lenderSignature']);
       allow update: if signedIn()
         && request.auth.uid in resource.data.participantUids

@@ -25,6 +25,18 @@ test("Firestore chat is restricted to agreement participants and immutable messa
   assert.match(rules, /allow update, delete: if false/);
 });
 
+test("profiles use server-side duplicate control and agreement retention is 12 months", async () => {
+  const rules = await readFile(new URL("../firestore.rules", import.meta.url), "utf8");
+  const profileApi = await readFile(new URL("../app/api/profile/route.ts", import.meta.url), "utf8");
+  const agreements = await readFile(new URL("../lib/firebase-agreements.ts", import.meta.url), "utf8");
+  assert.match(rules, /match \/accountIdentityPhones\/\{fingerprint\}/);
+  assert.match(rules, /allow create, update, delete: if false/);
+  assert.match(profileApi, /createHmac\("sha256"/);
+  assert.match(profileApi, /accountIdentityProfiles/);
+  assert.match(agreements, /setMonth\(retentionUntil\.getMonth\(\) \+ 12\)/);
+  assert.match(agreements, /retentionUntil:Timestamp\.fromDate/);
+});
+
 test("Storage rules restrict image writes by uid, type and size", async () => {
   const rules = await readFile(new URL("../storage.rules", import.meta.url), "utf8");
   assert.match(rules, /request\.auth\.uid == uid/);

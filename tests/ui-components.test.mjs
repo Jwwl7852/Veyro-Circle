@@ -56,6 +56,15 @@ test("keeps the application width stable and prints agreements as A4", async () 
   assert.match(css, /\.print-agreement\s*\{[^}]*position:static!important/);
 });
 
+test("agreement offers separate account storage and a standalone print document", async () => {
+  const page = await readFile(path.join(root, "app", "page.tsx"), "utf8");
+  assert.match(page, /Gem på min konto/);
+  assert.match(page, /Udskriv aftalen/);
+  assert.match(page, /function printAgreementDocument/);
+  assert.match(page, /window\.open\("", "_blank"/);
+  assert.match(page, /12 måneder/);
+});
+
 test("forwards progress semantics to the primitive", async () => {
   const { Progress } = await vite.ssrLoadModule("/components/ui/progress.tsx");
   const html = renderToStaticMarkup(React.createElement(Progress, { value: 37 }));

@@ -1,6 +1,7 @@
 "use client";
 
-import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
+import { doc, getDoc } from "firebase/firestore";
+import type { User } from "firebase/auth";
 import { db } from "@/lib/firebase-client";
 import type { Lang, ListingPlan, Profile } from "@/lib/marketplace";
 
@@ -31,25 +32,8 @@ export async function loadCircleProfile(uid: string): Promise<CircleCloudProfile
   };
 }
 
-export async function saveCircleProfile(uid: string, profile: Profile, preferredLanguage: Lang) {
-  if (!db) throw new Error("Firebase er ikke konfigureret.");
-  const ref = doc(db, "users", uid);
-  const existing = await getDoc(ref);
-  const defaults = existing.exists() ? {} : {
-    createdAt: serverTimestamp(),
-    verificationStatus: "pending",
-    subscriptionPlan: "free",
-  };
-  await setDoc(ref, {
-    ...defaults,
-    uid,
-    name: profile.name,
-    email: profile.email,
-    phone: profile.phone,
-    street: profile.street,
-    place: profile.place,
-    taxAcknowledgement: profile.taxAcknowledgement ?? null,
-    preferredLanguage,
-    updatedAt: serverTimestamp(),
-  }, { merge: true });
+export async function saveCircleProfile(user: User, profile: Profile, preferredLanguage: Lang) {
+  const response = await fetch("/api/profile", {method:"POST",headers:{"content-type":"application/json",authorization:`Bearer ${await user.getIdToken()}`},body:JSON.stringify({...profile,preferredLanguage})});
+  const data = await response.json() as {error?:string};
+  if (!response.ok) throw new Error(data.error || "Profilen kunne ikke gemmes.");
 }

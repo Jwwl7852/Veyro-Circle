@@ -1,7 +1,7 @@
 import { serverConfig } from "@/lib/server-config";
 
 type FirebaseIdentity = { localId: string; email: string; emailVerified: boolean };
-type FirestoreField = { stringValue?: string; booleanValue?: boolean; timestampValue?: string; mapValue?: { fields?: Record<string, FirestoreField> } };
+export type FirestoreField = { stringValue?: string; booleanValue?: boolean; doubleValue?: number; timestampValue?: string; mapValue?: { fields?: Record<string, FirestoreField> } };
 let cachedToken: { value: string; expiresAt: number } | null = null;
 
 function b64url(value: string | Uint8Array) {
@@ -10,7 +10,7 @@ function b64url(value: string | Uint8Array) {
   return btoa(binary).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
 }
 
-async function serviceToken() {
+export async function serviceToken() {
   if (cachedToken && cachedToken.expiresAt > Date.now() + 60_000) return cachedToken.value;
   const email = serverConfig("FIREBASE_SERVICE_ACCOUNT_EMAIL");
   const pem = serverConfig("FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY").replace(/\\n/g, "\n");
@@ -41,6 +41,29 @@ export async function verifyFirebaseRequest(request: Request): Promise<FirebaseI
 
 function documentUrl(uid: string) {
   return `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(serverConfig("NEXT_PUBLIC_FIREBASE_PROJECT_ID"))}/databases/(default)/documents/users/${encodeURIComponent(uid)}`;
+}
+
+export function firestoreDocumentUrl(path: string) {
+  const encodedPath = path.split("/").map(encodeURIComponent).join("/");
+  return `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(serverConfig("NEXT_PUBLIC_FIREBASE_PROJECT_ID"))}/databases/(default)/documents/${encodedPath}`;
+}
+
+export async function getFirestoreDocument(path: string) {
+  const response = await fetch(firestoreDocumentUrl(path), { headers:{ authorization:`Bearer ${await serviceToken()}` } });
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error("Firestore-dokumentet kunne ikke hentes");
+  return response.json() as Promise<{ name:string; fields?:Record<string, FirestoreField>; updateTime?:string }>;
+}
+
+export async function commitFirestoreWrites(writes: unknown[]) {
+  const project = encodeURIComponent(serverConfig("NEXT_PUBLIC_FIREBASE_PROJECT_ID"));
+  const response = await fetch(`https://firestore.googleapis.com/v1/projects/${project}/databases/(default)/documents:commit`, {
+    method:"POST", headers:{authorization:`Bearer ${await serviceToken()}`,"content-type":"application/json"}, body:JSON.stringify({writes}),
+  });
+  if (!response.ok) {
+    const details = await response.text();
+    throw new Error(response.status === 409 || response.status === 412 ? "IDENTITY_CONFLICT" : `Firestore-opdateringen fejlede: ${details}`);
+  }
 }
 
 export async function getServerProfile(uid: string) {

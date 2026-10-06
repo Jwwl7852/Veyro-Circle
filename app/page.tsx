@@ -16,7 +16,7 @@ import {
   SprayCan, Heart, Home, ImagePlus, Languages, MapPin, MessageCircle,
   PackagePlus, PartyPopper, Pencil, Search, ShieldCheck, Sparkles, Star, TentTree,
   Trash2, Truck, Utensils, Wrench, X, Crown, FileSignature, Printer, LockKeyhole,
-  LogOut, LoaderCircle, Send,
+  LogOut, LoaderCircle, Send, Save,
 } from "lucide-react";
 import { toast, Toaster } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -32,7 +32,7 @@ import {
 type Lang = "da" | "sv";
 type Tab = "home" | "items" | "requests" | "profile" | "subscription";
 type AgreementSignature = { dataUrl: string; signedAt: string };
-type Loan = { id: string; item: Listing; from: string; to: string; days: number; total: number; deposit: number; message: string; borrower: Profile; borrowerUid?: string; lenderUid?: string; borrowerSignature?: AgreementSignature; lenderSignature?: AgreementSignature };
+type Loan = { id: string; item: Listing; from: string; to: string; days: number; total: number; deposit: number; message: string; borrower: Profile; borrowerUid?: string; lenderUid?: string; borrowerSignature?: AgreementSignature; lenderSignature?: AgreementSignature; saved?: boolean };
 type Listing = {
   id: number; name: string; owner: string; city: string; country: "DK" | "SE";
   ownerStreet: string; ownerPhone: string; ownerUid?: string;
@@ -139,6 +139,7 @@ export default function HomePage() {
   const [agreementLoan, setAgreementLoan] = useState<Loan | null>(null);
   const [chatLoan, setChatLoan] = useState<Loan | null>(null);
   const [agreementsError, setAgreementsError] = useState(false);
+  const [agreementSaving, setAgreementSaving] = useState(false);
   const [formError, setFormError] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [newPhotos, setNewPhotos] = useState<CompressedListingImage[]>([]);
@@ -236,11 +237,12 @@ export default function HomePage() {
   }
 
   async function saveProfile(next: Profile) {
-    setProfile(next); setOrigin(next.place); setNewPlace(next.place); setNewCountry(next.place.country);
     if (configured && user) {
-      try { await saveCircleProfile(user.uid, next, lang); toast.success(lang === "da" ? "Profilen er gemt sikkert." : "Profilen har sparats säkert."); }
-      catch { toast.error(lang === "da" ? "Profilen kunne ikke gemmes. Prøv igen." : "Profilen kunde inte sparas. Försök igen."); }
+      try { await saveCircleProfile(user, next, lang); }
+      catch (cause) { const message = cause instanceof Error ? cause.message : (lang === "da" ? "Profilen kunne ikke gemmes. Prøv igen." : "Profilen kunde inte sparas. Försök igen."); toast.error(message); throw cause; }
     } else toast.success(lang === "da" ? "Demoprofil gemt for denne session." : "Demoprofil sparad för denna session.");
+    setProfile(next); setOrigin(next.place); setNewPlace(next.place); setNewCountry(next.place.country);
+    toast.success(lang === "da" ? "Profilen er gemt sikkert." : "Profilen har sparats säkert.");
   }
 
   async function logout() {
@@ -330,9 +332,21 @@ export default function HomePage() {
     if (deposit === null) { setFormError(lang === "da" ? "Depositum skal være et gyldigt positivt beløb." : "Depositionen måste vara ett giltigt positivt belopp."); return; }
     const loan: Loan = {id: `VC-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`, item: selected, from, to, days, total: selected.dailyPrice * days, deposit, message: requestMessage.trim(), borrower: profile, borrowerUid: user?.uid, lenderUid: selected.ownerUid};
     setLoans(items=>[loan, ...items]);
-    if (configured && loan.borrowerUid && loan.lenderUid) void saveCircleAgreement(agreementForCloud(loan)).catch(() => toast.error(lang === "da" ? "Aftalen kunne ikke gemmes på profilerne." : "Avtalet kunde inte sparas på profilerna."));
     setShowRequest(false); setSelected(null); setTab("requests");
-    toast.success(lang === "da" ? "Testforespørgsel gemt — ingen betaling trukket." : "Testförfrågan sparad — ingen betalning dragen.");
+    toast.success(lang === "da" ? "Forespørgslen er oprettet. Vælg om aftalen skal gemmes på kontoen eller udskrives." : "Förfrågan har skapats. Välj om avtalet ska sparas på kontot eller skrivas ut.");
+  }
+
+  async function storeAgreement(loan: Loan) {
+    if (!configured || !user || !loan.borrowerUid) { toast.error(lang === "da" ? "Du skal være logget ind for at gemme aftalen." : "Du måste vara inloggad för att spara avtalet."); return; }
+    setAgreementSaving(true);
+    try {
+      await saveCircleAgreement(agreementForCloud({...loan, borrowerSignature:undefined, lenderSignature:undefined}));
+      if (loan.borrowerSignature) await saveCircleSignature(loan.id, "borrower", loan.borrowerSignature);
+      const updated = {...loan, saved:true};
+      setLoans(items => items.map(item => item.id === loan.id ? updated : item)); setAgreementLoan(updated);
+      toast.success(lang === "da" ? "Aftalen er gemt på din konto i 12 måneder." : "Avtalet har sparats på ditt konto i 12 månader.");
+    } catch { toast.error(lang === "da" ? "Aftalen kunne ikke gemmes. Kontrollér Firebase-reglerne og prøv igen." : "Avtalet kunde inte sparas. Kontrollera Firebase-reglerna och försök igen."); }
+    finally { setAgreementSaving(false); }
   }
 
   function signAgreement(loan: Loan, role: "borrower" | "lender", dataUrl: string) {
@@ -340,8 +354,8 @@ export default function HomePage() {
     const updated = { ...loan, [role === "borrower" ? "borrowerSignature" : "lenderSignature"]: signature };
     setLoans(items => items.map(item => item.id === loan.id ? updated : item));
     setAgreementLoan(updated);
-    if (configured && loan.borrowerUid && loan.lenderUid) void saveCircleSignature(loan.id, role, signature).catch(() => toast.error(lang === "da" ? "Underskriften kunne ikke gemmes. Prøv igen." : "Signaturen kunde inte sparas. Försök igen."));
-    toast.success(lang === "da" ? "Underskriften er registreret i prøveversionen." : "Underskriften har registrerats i demoversionen.");
+    if (configured && loan.saved && loan.borrowerUid && loan.lenderUid) void saveCircleSignature(loan.id, role, signature).catch(() => toast.error(lang === "da" ? "Underskriften kunne ikke gemmes. Prøv igen." : "Signaturen kunde inte sparas. Försök igen."));
+    toast.success(loan.saved ? (lang === "da" ? "Underskriften er registreret." : "Signaturen har registrerats.") : (lang === "da" ? "Underskriften er tilføjet. Vælg ‘Gem på min konto’ for at bevare aftalen." : "Signaturen har lagts till. Välj ‘Spara på mitt konto’ för att behålla avtalet."));
   }
 
   if (authLoading || (configured && user?.emailVerified && profileLoading)) return <main className="auth-page"><img className="auth-brand-logo" src="/branding/veyro-systems-logo.png" alt="Veyro Systems" /><p>{lang === "da" ? "Indlæser Veyro Circle…" : "Laddar Veyro Circle…"}</p></main>;
@@ -540,7 +554,7 @@ export default function HomePage() {
             <div className="agreement-signatures"><SignatureBox title={lang === "da" ? "Låners underskrift" : "Låntagarens underskrift"} name={agreementLoan.borrower.name} signature={agreementLoan.borrowerSignature} lang={lang} onSign={dataUrl => signAgreement(agreementLoan, "borrower", dataUrl)} /><SignatureBox title={lang === "da" ? "Ejers underskrift" : "Ägarens underskrift"} name={agreementLoan.item.owner} signature={agreementLoan.lenderSignature} lang={lang} onSign={dataUrl => signAgreement(agreementLoan, "lender", dataUrl)} /></div>
             <p className="agreement-legal"><LockKeyhole size={15} />{lang === "da" ? "Ved underskrift bekræfter hver part, at oplysningerne er korrekte, og at den anden parts navn og adresse er kontrolleret mod forevist ID." : "Genom underskrift bekräftar varje part att uppgifterna är korrekta och att den andra partens namn och adress har kontrollerats mot visad legitimation."}</p>
           </div>
-          <div className="agreement-actions no-print"><Button variant="outline" onClick={() => window.print()}><Printer size={17} />{lang === "da" ? "Udskriv / gem som PDF" : "Skriv ut / spara som PDF"}</Button><span>{agreementLoan.borrowerSignature && agreementLoan.lenderSignature ? (lang === "da" ? "Aftalen er underskrevet af begge og ligger under Mine lån" : "Avtalet är signerat av båda och finns under Mina lån") : (lang === "da" ? "Afventer begge underskrifter" : "Väntar på båda signaturerna")}</span></div>
+          <div className="agreement-actions no-print"><div className="agreement-choice-buttons"><Button disabled={agreementSaving || agreementLoan.saved} onClick={() => void storeAgreement(agreementLoan)}><Save size={17} />{agreementLoan.saved ? (lang === "da" ? "Gemt på kontoen" : "Sparat på kontot") : agreementSaving ? (lang === "da" ? "Gemmer…" : "Sparar…") : (lang === "da" ? "Gem på min konto" : "Spara på mitt konto")}</Button><Button variant="outline" onClick={() => printAgreementDocument(lang)}><Printer size={17} />{lang === "da" ? "Udskriv aftalen" : "Skriv ut avtalet"}</Button></div><span>{lang === "da" ? "Gemte aftaler kan ses under Mine lån i 12 måneder." : "Sparade avtal visas under Mina lån i 12 månader."}</span></div>
         </DialogContent>}
       </Dialog>
 
@@ -609,10 +623,24 @@ function priceLabel(item: Listing, lang: Lang) {
   return item.dailyPrice === 0 ? "Gratis" : money(item.dailyPrice, item.country, lang) + (lang === "da" ? " / dag" : " / dag");
 }
 
+function printAgreementDocument(lang: Lang) {
+  const agreement = document.querySelector<HTMLElement>(".print-agreement");
+  if (!agreement) { toast.error(lang === "da" ? "Aftalen kunne ikke klargøres til udskrift." : "Avtalet kunde inte förberedas för utskrift."); return; }
+  const printWindow = window.open("", "_blank", "noopener,noreferrer,width=900,height=1000");
+  if (!printWindow) { toast.error(lang === "da" ? "Tillad pop op-vinduer for at udskrive aftalen." : "Tillåt popup-fönster för att skriva ut avtalet."); return; }
+  const copy = agreement.cloneNode(true) as HTMLElement;
+  copy.querySelectorAll(".no-print,canvas,button").forEach(node => node.remove());
+  printWindow.document.open();
+  printWindow.document.write(`<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><title>Veyro Circle · ${lang === "da" ? "Leje- og låneaftale" : "Hyres- och låneavtal"}</title><style>
+    @page{size:A4 portrait;margin:12mm}*{box-sizing:border-box}body{margin:0;color:#172936;font:13px/1.45 Arial,sans-serif}h1,h2,h3,p{margin-top:0}.print-agreement{width:100%}.agreement-header{border-bottom:2px solid #008eac;padding-bottom:10px}.eyebrow,small,dt{color:#607583;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em}.agreement-parties,.agreement-signatures,.agreement-facts{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}.agreement-parties section,.agreement-signatures section{display:grid;gap:3px;border:1px solid #d6e1e6;padding:10px}.agreement-facts{gap:0;border:1px solid #d6e1e6}.agreement-facts div{padding:8px 10px;border-bottom:1px solid #d6e1e6}.agreement-facts dd{margin:2px 0 0;font-weight:700}.agreement-terms,.agreement-id-check{margin-top:14px}.agreement-terms ol,.agreement-id-check ul{padding-left:20px}.agreement-id-check{border:1px solid #86b8c2;padding:10px;background:#eef9fa}.agreement-signatures section{min-height:120px;border-style:dashed}.paper-signature-line{display:block;margin-top:auto;padding-top:45px;border-bottom:1px solid #172936}.agreement-legal{margin-top:12px;border-left:3px solid #d88920;padding:8px;background:#fff7df}.signature-image{max-width:100%;max-height:80px;object-fit:contain}svg{display:none}
+  </style></head><body>${copy.outerHTML}<script>window.addEventListener('load',()=>setTimeout(()=>window.print(),150));<\/script></body></html>`);
+  printWindow.document.close();
+}
+
 function agreementForCloud(loan: Loan): StoredAgreement {
-  if (!loan.borrowerUid || !loan.lenderUid) throw new Error("Aftalen mangler parter");
+  if (!loan.borrowerUid) throw new Error("Aftalen mangler låner");
   return {
-    id:loan.id, borrowerUid:loan.borrowerUid, lenderUid:loan.lenderUid, participantUids:[loan.borrowerUid,loan.lenderUid], borrower:loan.borrower,
+    id:loan.id, borrowerUid:loan.borrowerUid, ...(loan.lenderUid ? {lenderUid:loan.lenderUid} : {}), participantUids:loan.lenderUid ? [loan.borrowerUid,loan.lenderUid] : [loan.borrowerUid], borrower:loan.borrower,
     lender:{name:loan.item.owner,street:loan.item.ownerStreet,phone:loan.item.ownerPhone,place:loan.item.place},
     item:{id:loan.item.id,name:loan.item.name,category:loan.item.category,country:loan.item.country,dailyPrice:loan.item.dailyPrice},
     from:loan.from,to:loan.to,days:loan.days,total:loan.total,deposit:loan.deposit,message:loan.message,
@@ -624,7 +652,7 @@ function agreementFromCloud(record: StoredAgreement): Loan {
   const category = categories.find(item => item.id === record.item.category) || categories[1];
   return {
     id:record.id,from:record.from,to:record.to,days:record.days,total:record.total,deposit:record.deposit,message:record.message,
-    borrower:record.borrower,borrowerUid:record.borrowerUid,lenderUid:record.lenderUid,borrowerSignature:record.borrowerSignature,lenderSignature:record.lenderSignature,
+    borrower:record.borrower,borrowerUid:record.borrowerUid,lenderUid:record.lenderUid,borrowerSignature:record.borrowerSignature,lenderSignature:record.lenderSignature,saved:true,
     item:{id:record.item.id,name:record.item.name,owner:record.lender.name,ownerStreet:record.lender.street,ownerPhone:record.lender.phone,ownerUid:record.lenderUid,city:record.lender.place.city,country:record.item.country,distance:0,category:record.item.category,icon:category.icon,color:categoryColors[record.item.category] || categoryColors.tools,description:"",rating:0,availability:"",place:record.lender.place,dailyPrice:record.item.dailyPrice},
   };
 }
@@ -713,7 +741,7 @@ function LoanRow({ title, owner, status, statusClass, icon: Icon, onChat, chatLa
 }
 
 function ProfileView({ lang, profile, authenticatedEmail, onSave, onLogout, onSubscription }: {
-  lang: Lang; profile: Profile | null; onSave: (p: Profile)=>void;
+  lang: Lang; profile: Profile | null; onSave: (p: Profile)=>Promise<void>;
   authenticatedEmail?: string; onLogout: () => void;
   onSubscription: () => void;
 }) {

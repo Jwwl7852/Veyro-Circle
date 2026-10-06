@@ -9,4 +9,6 @@
 7. Indsæt de samme seks `NEXT_PUBLIC_FIREBASE_*` værdier som miljøvariabler i Netlify. De er klientkonfiguration, ikke servicekontonøgler. Læg aldrig servicekonto, Admin SDK-private keys eller `.env.local` i Git.
 8. Test registrering, bekræftelsesmail, login, nulstilling, profilgemning og log ud med en testbruger i både dansk og svensk.
 
-Firestore-profiler bruger dokumentstien `users/{Firebase UID}`. Klienten kan ikke selv ændre roller, verificeringsstatus, abonnement eller ejerskab. Sådanne ændringer skal senere foretages af et betroet backendmiljø (Cloud Functions/Admin SDK).
+Firestore-profiler bruger dokumentstien `users/{Firebase UID}`. Profilen oprettes gennem den serverbeskyttede `/api/profile`-rute, som kontrollerer normaliseret telefonnummer og kombinationen af navn, adresse og telefonnummer. De interne kontrolsamlinger indeholder kun HMAC-fingeraftryk og kan ikke læses eller skrives fra browseren. Klienten kan heller ikke selv ændre roller, verificeringsstatus, abonnement eller ejerskab.
+
+Gemte låne- og lejeaftaler får feltet `retentionUntil` sat 12 måneder frem. Aktivér Firestore TTL for samlingen `agreements` med feltet `retentionUntil`. Appen skjuler allerede udløbne aftaler, mens TTL sørger for automatisk sletning efter perioden.

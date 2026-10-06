@@ -38,7 +38,7 @@ export function PlacePicker({ value, onChange, country, lang, label }: {
   </div>;
 }
 
-export function ProfileForm({ profile, lang, onSave, authenticatedEmail }: { profile: Profile | null; lang: Lang; onSave: (p: Profile)=>void; authenticatedEmail?: string }) {
+export function ProfileForm({ profile, lang, onSave, authenticatedEmail }: { profile: Profile | null; lang: Lang; onSave: (p: Profile)=>void | Promise<void>; authenticatedEmail?: string }) {
   const da = lang === "da";
   const [editing, setEditing] = useState(!profile);
   const [name, setName] = useState(profile?.name || "");
@@ -50,11 +50,12 @@ export function ProfileForm({ profile, lang, onSave, authenticatedEmail }: { pro
   const [country, setCountry] = useState<Country | "">(profile?.place.country || "");
   const [place, setPlace] = useState<Place | null>(profile?.place || null);
   const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
   const [resetSent, setResetSent] = useState(false);
   const [taxRead, setTaxRead] = useState(hasReadTaxGuidance(profile?.taxAcknowledgement, profile?.place.country || "DK"));
   const taxCheckId = useId();
   const addressIsValid = Boolean(country && place?.country === country && validAddress(street, place));
-  return <form className="profile-form" onSubmit={e=>{
+  return <form className="profile-form" onSubmit={async e=>{
     e.preventDefault();
     if (!/^\S+@\S+\.\S+$/.test(email.trim())) {
       setError(da ? "Indtast en gyldig e-mailadresse." : "Ange en giltig e-postadress."); return;
@@ -68,7 +69,10 @@ export function ProfileForm({ profile, lang, onSave, authenticatedEmail }: { pro
     if (!taxRead) {
       setError(da ? "Læs skatteinformationen, og bekræft, at du har læst den." : "Läs skatteinformationen och bekräfta att du har läst den."); return;
     }
-    onSave({name: name.trim(), email: email.trim().toLowerCase(), phone: phone.trim(), street: street.trim(), place: place!, taxAcknowledgement: {version: TAX_GUIDANCE_VERSION, country, acceptedAt: new Date().toISOString()}}); setError(""); setEditing(false);
+    setSaving(true);
+    try { await onSave({name: name.trim(), email: email.trim().toLowerCase(), phone: phone.trim(), street: street.trim(), place: place!, taxAcknowledgement: {version: TAX_GUIDANCE_VERSION, country, acceptedAt: new Date().toISOString()}}); setError(""); setEditing(false); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : (da ? "Oplysningerne kunne ikke gemmes." : "Uppgifterna kunde inte sparas.")); }
+    finally { setSaving(false); }
   }}>
     {profile && !editing ? <>
       <div className="saved-profile-heading"><div><h2>{da ? "Konto og oplysninger" : "Konto och uppgifter"}</h2><p>{da ? "Dine oplysninger er gemt." : "Dina uppgifter är sparade."}</p></div><Button type="button" variant="outline" onClick={()=>setEditing(true)}>{da ? "Rediger oplysninger" : "Redigera uppgifter"}</Button></div>
@@ -94,7 +98,7 @@ export function ProfileForm({ profile, lang, onSave, authenticatedEmail }: { pro
     </div></> : <p className="tax-country-prompt">{da ? "Vælg dit profilland for at se postnumre, byer og de relevante skatteregler." : "Välj ditt profilland för att se postnummer, orter och relevanta skatteregler."}</p>}
     {!authenticatedEmail && <p className="demo-note">{da ? "Demotilstand: Firebase er ikke konfigureret, så profilen gemmes kun i denne session." : "Demoläge: Firebase är inte konfigurerat, så profilen sparas bara i den här sessionen."}</p>}
     {error && <p role="alert" className="form-error">{error}</p>}
-    <div className="profile-form-actions">{profile && <Button type="button" variant="outline" onClick={()=>{setEditing(false);setError("");}}>{da ? "Annuller" : "Avbryt"}</Button>}<Button type="submit" disabled={!country || !taxRead} className="h-12 rounded-xl">{profile ? (da ? "Gem ændringer" : "Spara ändringar") : authenticatedEmail ? (da ? "Gem profil" : "Spara profil") : (da ? "Opret testkonto" : "Skapa testkonto")}</Button></div>
+    <div className="profile-form-actions">{profile && <Button type="button" variant="outline" disabled={saving} onClick={()=>{setEditing(false);setError("");}}>{da ? "Annuller" : "Avbryt"}</Button>}<Button type="submit" disabled={!country || !taxRead || saving} className="h-12 rounded-xl">{saving ? (da ? "Kontrollerer oplysninger…" : "Kontrollerar uppgifter…") : profile ? (da ? "Gem ændringer" : "Spara ändringar") : authenticatedEmail ? (da ? "Gem profil" : "Spara profil") : (da ? "Opret testkonto" : "Skapa testkonto")}</Button></div>
     </>}
   </form>;
 }
