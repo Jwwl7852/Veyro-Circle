@@ -15,7 +15,7 @@ import {
   SprayCan, Heart, Home, ImagePlus, Languages, MapPin, MessageCircle,
   PackagePlus, PartyPopper, Pencil, Search, ShieldCheck, Sparkles, Star, TentTree,
   Trash2, Truck, Utensils, Wrench, X, Crown, FileSignature, Printer, LockKeyhole,
-  BadgeCheck, LogOut,
+  LogOut,
 } from "lucide-react";
 import { toast, Toaster } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -29,7 +29,7 @@ import {
 } from "@/components/ui/alert-dialog";
 
 type Lang = "da" | "sv";
-type Tab = "home" | "search" | "requests" | "profile";
+type Tab = "home" | "items" | "requests" | "profile";
 type AgreementSignature = { dataUrl: string; signedAt: string };
 type Loan = { id: string; item: Listing; from: string; to: string; days: number; total: number; deposit: number; message: string; borrower: Profile; borrowerUid?: string; lenderUid?: string; borrowerSignature?: AgreementSignature; lenderSignature?: AgreementSignature };
 type Listing = {
@@ -77,7 +77,7 @@ const copy = {
     heroText: "Lån gratis eller lej til en overkommelig pris. Find ting i nærheden, og del det, du ikke bruger hver dag.",
     heroButton: "Find noget at låne", addItem: "Tilføj en ting", popular: "Ting i dit søgeområde",
     viewAll: "Se alle", free: "Gratis", borrow: "Spørg om at låne", navHome: "Hjem",
-    navSearch: "Søg", navRequests: "Mine lån", navProfile: "Konto", results: "ting fundet",
+    navItems: "Mine ting", navRequests: "Mine lån", navProfile: "Konto", results: "ting fundet",
     noResults: "Ingen ting matcher din søgning endnu.", addTitle: "Hvad vil du dele?",
     addDescription: "Vælg gratis udlån eller angiv en pris pr. dag. Kun by og postnummer vises.", itemName: "Navn på tingen",
     city: "By", description: "Kort beskrivelse", publish: "Opret annonce", photo: "Tilføj billeder",
@@ -95,7 +95,7 @@ const copy = {
     heroText: "Låna gratis eller hyr till ett överkomligt pris. Hitta saker i närheten och dela det du inte använder varje dag.",
     heroButton: "Hitta något att låna", addItem: "Lägg till en sak", popular: "Saker i ditt sökområde",
     viewAll: "Visa alla", free: "Gratis", borrow: "Fråga om att låna", navHome: "Hem",
-    navSearch: "Sök", navRequests: "Mina lån", navProfile: "Konto", results: "saker hittades",
+    navItems: "Mina saker", navRequests: "Mina lån", navProfile: "Konto", results: "saker hittades",
     noResults: "Inga saker matchar din sökning ännu.", addTitle: "Vad vill du dela?",
     addDescription: "Välj gratis utlåning eller ange ett pris per dag. Bara ort och postnummer visas.", itemName: "Sakens namn",
     city: "Ort", description: "Kort beskrivning", publish: "Skapa annons", photo: "Lägg till bilder",
@@ -136,8 +136,7 @@ export default function HomePage() {
   const [depositInput, setDepositInput] = useState("");
   const [loans, setLoans] = useState<Loan[]>([]);
   const [agreementLoan, setAgreementLoan] = useState<Loan | null>(null);
-  const [identityVerified, setIdentityVerified] = useState(false);
-  const [showIdentityVerification, setShowIdentityVerification] = useState(false);
+  const [agreementsError, setAgreementsError] = useState(false);
   const [formError, setFormError] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [newPhotos, setNewPhotos] = useState<CompressedListingImage[]>([]);
@@ -182,7 +181,7 @@ export default function HomePage() {
       if (cloud) {
         const next = { name: cloud.name, email: user.email || cloud.email, phone: cloud.phone, street: cloud.street, place: cloud.place, taxAcknowledgement: cloud.taxAcknowledgement };
         setProfile(next); setLang(cloud.preferredLanguage); setOrigin(cloud.place); setNewPlace(cloud.place); setNewCountry(cloud.place.country);
-        setIdentityVerified(cloud.verificationStatus === "verified"); setListingPlan(cloud.subscriptionPlan === "plus" ? "plus" : "free");
+        setListingPlan(cloud.subscriptionPlan === "plus" ? "plus" : "free");
       } else setTab("profile");
     }).catch(() => toast.error(lang === "da" ? "Profilen kunne ikke hentes fra Firebase." : "Profilen kunde inte hämtas från Firebase."))
       .finally(() => active && setProfileLoading(false));
@@ -191,8 +190,11 @@ export default function HomePage() {
 
   useEffect(() => {
     if (!configured || !user?.uid) return;
-    loadCircleAgreements(user.uid).then(records => setLoans(records.map(agreementFromCloud))).catch(() => toast.error(lang === "da" ? "Dine aftaler kunne ikke hentes." : "Dina avtal kunde inte hämtas."));
-  }, [configured, lang, user?.uid]);
+    loadCircleAgreements(user.uid).then(records => { setAgreementsError(false); setLoans(records.map(agreementFromCloud)); }).catch(error => {
+      console.error("Circle agreements could not be loaded", error);
+      setAgreementsError(true);
+    });
+  }, [configured, user?.uid]);
 
   const filtered = useMemo(() => {
     if (!origin && radius !== "all") return [];
@@ -213,7 +215,6 @@ export default function HomePage() {
 
   function openAdd() {
     if (!profile) { setTab("profile"); toast.info(lang === "da" ? "Opret først din profil med adresse og by." : "Skapa först din profil med adress och ort."); return; }
-    if (!identityVerified) { setShowIdentityVerification(true); return; }
     const activeCount = listings.filter(item => item.owned).length;
     if (!canCreateListing(activeCount, listingPlan)) {
       if (listingPlan === "free") setShowUpgrade(true);
@@ -233,8 +234,7 @@ export default function HomePage() {
   }
 
   async function saveProfile(next: Profile) {
-    const identityChanged = profile && (profile.name !== next.name || profile.place.country !== next.place.country);
-    setProfile(next); if (identityChanged) setIdentityVerified(false); setOrigin(next.place); setNewPlace(next.place); setNewCountry(next.place.country);
+    setProfile(next); setOrigin(next.place); setNewPlace(next.place); setNewCountry(next.place.country);
     if (configured && user) {
       try { await saveCircleProfile(user.uid, next, lang); toast.success(lang === "da" ? "Profilen er gemt sikkert." : "Profilen har sparats säkert."); }
       catch { toast.error(lang === "da" ? "Profilen kunne ikke gemmes. Prøv igen." : "Profilen kunde inte sparas. Försök igen."); }
@@ -243,7 +243,7 @@ export default function HomePage() {
 
   async function logout() {
     if (configured) await circleSignOut();
-    setProfile(null); setIdentityVerified(false); setListingPlan("free"); setOrigin(defaultPlace); setTab("profile");
+    setProfile(null); setListingPlan("free"); setOrigin(defaultPlace); setTab("profile");
     toast.success(lang === "da" ? "Du er logget ud." : "Du har loggats ut.");
   }
 
@@ -299,7 +299,7 @@ export default function HomePage() {
       setListings(items => [{ id: Date.now(), distance: 0, rating: 0, availability: "Ledig nu", ...update }, ...items]);
     }
     setOrigin(newPlace); setCountry("ALL"); setCategory("all"); setPriceFilter("all"); setQuery("");
-    setShowAdd(false); resetItemForm(); setTab(editingId !== null ? "profile" : "search");
+    setShowAdd(false); resetItemForm(); setTab("items");
     toast.success(editingId !== null
       ? (lang === "da" ? "Dine ændringer er gemt." : "Dina ändringar har sparats.")
       : (lang === "da" ? "Annoncen er oprettet i prøveversionen." : "Annonsen har skapats i demoversionen."));
@@ -316,7 +316,6 @@ export default function HomePage() {
 
   function openRequest() {
     if (!profile) { setSelected(null); setTab("profile"); toast.info(lang === "da" ? "Opret først din profil med adresse og by." : "Skapa först din profil med adress och ort."); return; }
-    if (!identityVerified) { setSelected(null); setShowIdentityVerification(true); return; }
     const today = todayLocal();
     setFrom(today); setTo(today); setFormError(""); setRequestMessage(""); setDepositInput(""); setShowRequest(true);
   }
@@ -335,7 +334,6 @@ export default function HomePage() {
   }
 
   function signAgreement(loan: Loan, role: "borrower" | "lender", dataUrl: string) {
-    if (loan.id !== "VC-DEMO-2026" && !identityVerified) { setAgreementLoan(null); setShowIdentityVerification(true); return; }
     const signature = { dataUrl, signedAt: new Date().toISOString() };
     const updated = { ...loan, [role === "borrower" ? "borrowerSignature" : "lenderSignature"]: signature };
     setLoans(items => items.map(item => item.id === loan.id ? updated : item));
@@ -356,12 +354,7 @@ export default function HomePage() {
           <button className="brand-lockup" onClick={() => setTab("home")} aria-label={lang === "da" ? "Veyro Circle hjem" : "Veyro Circle hem"}>
             <img src="/branding/veyro-systems-logo.png" alt="Veyro Systems" /><span>Circle</span>
           </button>
-          <div className="relative ml-auto hidden max-w-xl flex-1 md:block">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#666b82]" size={19} />
-            <input aria-label={t.search} value={query} onChange={(e) => { setQuery(e.target.value); setTab("search"); }}
-              placeholder={t.search} className="h-12 w-full rounded-full border border-[#d9deea] bg-[#f7f8fb] pl-12 pr-4 text-[15px] outline-none transition focus:border-[#008EAC] focus:ring-4 focus:ring-[#008EAC]/10" />
-          </div>
-          <div className="ml-auto flex items-center gap-2 md:ml-0">
+          <div className="ml-auto flex items-center gap-2">
             <button className="icon-button" aria-label="Notifikationer"><Bell size={20} /></button>
             <button className="language-button" onClick={() => setLang(lang === "da" ? "sv" : "da")}>
               <Languages size={18} /><span>{lang === "da" ? "DA" : "SV"}</span><ChevronDown size={15} />
@@ -379,7 +372,7 @@ export default function HomePage() {
           <div className="sticky top-24 space-y-6">
             <nav className="space-y-1" aria-label="Hovedmenu">
               <SideNav icon={Home} label={t.navHome} active={tab === "home"} onClick={() => setTab("home")} />
-              <SideNav icon={Search} label={t.navSearch} active={tab === "search"} onClick={() => setTab("search")} />
+              <SideNav icon={ImagePlus} label={t.navItems} active={tab === "items"} onClick={() => setTab("items")} />
               <SideNav icon={CalendarDays} label={t.navRequests} active={tab === "requests"} badge={requestSent ? "1" : undefined} onClick={() => setTab("requests")} />
               <SideNav icon={CircleUserRound} label={t.navProfile} active={tab === "profile"} onClick={() => setTab("profile")} />
             </nav>
@@ -395,32 +388,26 @@ export default function HomePage() {
         </aside>
 
         <section className="min-w-0">
-          <div className="relative mb-5 md:hidden">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#666b82]" size={19} />
-            <input value={query} onChange={(e) => { setQuery(e.target.value); setTab("search"); }} placeholder={t.search}
-              className="h-13 w-full rounded-xl border border-[#d9deea] bg-white pl-12 pr-4 text-base outline-none focus:border-[#008EAC]" />
-          </div>
-
-          {(tab === "home" || tab === "search") && <>
-            {tab === "home" && <section className="hero-card">
+          {tab === "home" && <>
+            <section className="hero-card">
               <img src="/assets/neighbours-sharing.webp" alt="Naboer deler værktøj og trailer" />
               <div className="hero-overlay" />
               <div className="relative z-10 max-w-[540px] p-6 text-white sm:p-8 lg:p-10">
                 <span className="hero-kicker"><Sparkles size={15} />{t.heroKicker}</span>
                 <h1>{t.heroTitle}</h1><p>{t.heroText}</p>
                 <div className="mt-6 flex flex-wrap gap-3">
-                  <Button onClick={() => setTab("search")} className="h-12 rounded-lg bg-[#f5bf42] px-6 font-semibold text-[#172936] hover:bg-[#ffcf62]"><Search className="mr-2" size={18} />{t.heroButton}</Button>
+                  <Button onClick={() => document.getElementById("specific-listing-search")?.focus()} className="h-12 rounded-lg bg-[#f5bf42] px-6 font-semibold text-[#172936] hover:bg-[#ffcf62]"><Search className="mr-2" size={18} />{t.heroButton}</Button>
                   <Button onClick={openAdd} variant="outline" className="h-12 rounded-lg border-white/35 bg-white/12 px-6 font-bold text-white backdrop-blur hover:bg-white/20 hover:text-white"><PackagePlus className="mr-2" size={18} />{t.addItem}</Button>
                 </div>
               </div>
-            </section>}
+            </section>
 
             <section className="search-filters" aria-label={lang === "da" ? "Søgeområde og pris" : "Sökområde och pris"}>
               <div className="specific-search">
                 <label htmlFor="specific-listing-search">{lang === "da" ? "Hvad søger du efter?" : "Vad söker du efter?"}</label>
                 <div>
                   <Search size={20} aria-hidden="true" />
-                  <input id="specific-listing-search" type="search" value={query} onChange={event => { setQuery(event.target.value); setTab("search"); }} placeholder={lang === "da" ? "Søg fx efter boremaskine, trailer eller tæpperenser" : "Sök t.ex. efter borrmaskin, släp eller mattvätt"} />
+                  <input id="specific-listing-search" type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder={lang === "da" ? "Søg fx efter boremaskine, trailer eller tæpperenser" : "Sök t.ex. efter borrmaskin, släp eller mattvätt"} />
                   {query && <button type="button" onClick={() => setQuery("")} aria-label={lang === "da" ? "Ryd søgning" : "Rensa sökning"}><X size={18} /></button>}
                 </div>
                 <small>{lang === "da" ? "Søger i annoncens navn, beskrivelse og by." : "Söker i annonsens namn, beskrivning och ort."}</small>
@@ -460,15 +447,15 @@ export default function HomePage() {
             </div>
             <div className="mb-4 mt-7 flex items-end justify-between">
               <div><p className="text-sm font-bold uppercase tracking-[0.14em] text-[#777b90]">{`${filtered.length} ${t.results}`}{radius !== "all" ? ` · ${radius} km` : ""}</p><h2 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">{t.popular}</h2></div>
-              <button className="hidden text-sm font-bold text-[#008EAC] sm:block" onClick={() => setTab("search")}>{t.viewAll} →</button>
             </div>
             {filtered.length ? <div className="listing-grid">{filtered.map((item) => <ListingCard key={item.id} item={item} freeLabel={priceLabel(item, lang)} onOpen={() => setSelected(item)} />)}</div> :
               <div className="rounded-xl border border-dashed border-[#cbd0dd] bg-white px-6 py-16 text-center"><Search className="mx-auto mb-4 text-[#85899b]" size={34} /><p className="font-bold">{t.noResults}</p></div>}
           </>}
 
-          {tab === "requests" && <RequestsView t={t} loans={loans} lang={lang} onChat={() => toast.info(lang === "da" ? "Beskeder åbner her" : "Meddelanden öppnas här")} onAgreement={setAgreementLoan} />}
+          {tab === "items" && <ItemsView lang={lang} profile={profile} listings={listings.filter(item => item.owned)} plan={listingPlan} onAdd={openAdd} onEdit={openEdit} onDelete={setPendingDelete} />}
+          {tab === "requests" && <RequestsView t={t} loans={loans} lang={lang} loadError={agreementsError} onChat={() => toast.info(lang === "da" ? "Beskeder åbner her" : "Meddelanden öppnas här")} onAgreement={setAgreementLoan} />}
           {tab === "profile" && <ProfileView t={t} lang={lang} setLang={setLang} profile={profile} authenticatedEmail={user?.email || undefined} onSave={saveProfile}
-            onLogout={logout} verified={identityVerified} onVerify={() => setShowIdentityVerification(true)} listings={listings.filter(item => item.owned)} plan={listingPlan} onUpgrade={() => setShowUpgrade(true)} onManage={() => billing("portal")} onAdd={openAdd} onEdit={openEdit} onDelete={setPendingDelete} />}
+            onLogout={logout} plan={listingPlan} used={listings.filter(item => item.owned).length} onUpgrade={() => setShowUpgrade(true)} onManage={() => billing("portal")} />}
         </section>
 
         <aside className="hidden xl:block">
@@ -497,7 +484,7 @@ export default function HomePage() {
       </footer>
       <nav className="mobile-nav" aria-label="Mobilmenu">
         <MobileNav icon={Home} label={t.navHome} active={tab === "home"} onClick={() => setTab("home")} />
-        <MobileNav icon={Search} label={t.navSearch} active={tab === "search"} onClick={() => setTab("search")} />
+        <MobileNav icon={ImagePlus} label={t.navItems} active={tab === "items"} onClick={() => setTab("items")} />
         <button className="add-mobile" onClick={openAdd} aria-label={t.addItem}><PackagePlus size={25} /></button>
         <MobileNav icon={CalendarDays} label={t.navRequests} active={tab === "requests"} badge={requestSent} onClick={() => setTab("requests")} />
         <MobileNav icon={CircleUserRound} label={t.navProfile} active={tab === "profile"} onClick={() => setTab("profile")} />
@@ -546,22 +533,12 @@ export default function HomePage() {
             <div className="agreement-parties"><AgreementParty title={lang === "da" ? "Udlejer / ejer" : "Uthyrare / ägare"} name={agreementLoan.item.owner} street={agreementLoan.item.ownerStreet} postcode={agreementLoan.item.place.postcode} city={agreementLoan.item.place.city} phone={agreementLoan.item.ownerPhone} /><AgreementParty title={lang === "da" ? "Låner / lejer" : "Låntagare / hyrestagare"} name={agreementLoan.borrower.name} street={agreementLoan.borrower.street} postcode={agreementLoan.borrower.place.postcode} city={agreementLoan.borrower.place.city} phone={agreementLoan.borrower.phone} /></div>
             <dl className="agreement-facts"><div><dt>{lang === "da" ? "Genstand" : "Föremål"}</dt><dd>{agreementLoan.item.name}</dd></div><div><dt>{lang === "da" ? "Periode" : "Period"}</dt><dd>{agreementLoan.from} – {agreementLoan.to} ({agreementLoan.days} {lang === "da" ? "dage" : "dagar"})</dd></div><div><dt>{lang === "da" ? "Lejepris" : "Hyra"}</dt><dd>{agreementLoan.total ? money(agreementLoan.total, agreementLoan.item.country, lang) : t.free}</dd></div><div><dt>{lang === "da" ? "Depositum" : "Deposition"}</dt><dd>{agreementLoan.deposit ? money(agreementLoan.deposit, agreementLoan.item.country, lang) : (lang === "da" ? "Intet aftalt" : "Ingen avtalad")}</dd></div></dl>
             <section className="agreement-terms"><h3>{lang === "da" ? "Aftalens vilkår" : "Avtalsvillkor"}</h3><ol><li>{lang === "da" ? "Genstanden udleveres i den beskrevne stand. Parterne bør dokumentere standen med billeder ved udlevering og aflevering." : "Föremålet lämnas ut i beskrivet skick. Parterna bör dokumentera skicket med bilder vid utlämning och återlämning."}</li><li>{lang === "da" ? "Låneren skal bruge genstanden forsvarligt og returnere den senest på slutdatoen. Tid og sted aftales mellem parterne." : "Låntagaren ska använda föremålet aktsamt och återlämna det senast på slutdagen. Tid och plats avtalas mellan parterna."}</li><li>{lang === "da" ? "Skader, bortkomst, betaling, depositum og eventuel erstatning afgøres mellem parterne efter gældende ret. Veyro Circle er formidler og ikke part i aftalen." : "Skador, förlust, betalning, deposition och eventuell ersättning avgörs mellan parterna enligt gällande rätt. Veyro Circle förmedlar kontakten och är inte part i avtalet."}</li></ol>{agreementLoan.message && <p><b>{lang === "da" ? "Særlig aftale:" : "Särskild överenskommelse:"}</b> {agreementLoan.message}</p>}</section>
-            <section className="agreement-id-check"><h3><ShieldCheck size={19} />{lang === "da" ? "Identitetskontrol ved overdragelsen" : "Identitetskontroll vid överlämningen"}</h3><p>{lang === "da" ? "Indtil MitID/BankID bliver tilgængeligt i Veyro Circle, skal parterne sikre sig, hvem de indgår aftalen med." : "Tills MitID/BankID finns i Veyro Circle ska parterna säkerställa vem de ingår avtalet med."}</p><ul><li>{lang === "da" ? "Begge parter foreviser gyldig billedlegitimation med navn og adresse." : "Båda parter visar giltig fotolegitimation med namn och adress."}</li><li>{lang === "da" ? "Navn og adresse på legitimationen sammenholdes med oplysningerne i aftalen." : "Namn och adress på legitimationen jämförs med uppgifterna i avtalet."}</li><li>{lang === "da" ? "Aftalen underskrives på telefonen eller udskrives og underskrives fysisk af begge parter." : "Avtalet signeras på telefonen eller skrivs ut och undertecknas fysiskt av båda parter."}</li></ul><p className="id-privacy">{lang === "da" ? "Tag ikke kopi eller foto af legitimationen, medmindre personen udtrykkeligt har accepteret det og der er et lovligt behov." : "Ta inte en kopia eller ett foto av legitimationen om personen inte uttryckligen har godkänt det och det finns ett lagligt behov."}</p></section>
+            <section className="agreement-id-check"><h3><ShieldCheck size={19} />{lang === "da" ? "Kontrol ved overdragelsen" : "Kontroll vid överlämningen"}</h3><p>{lang === "da" ? "Parterne skal sikre sig, hvem de indgår aftalen med." : "Parterna ska säkerställa vem de ingår avtalet med."}</p><ul><li>{lang === "da" ? "Begge parter foreviser gyldig billedlegitimation med navn og adresse." : "Båda parter visar giltig fotolegitimation med namn och adress."}</li><li>{lang === "da" ? "Navn og adresse på legitimationen sammenholdes med oplysningerne i aftalen." : "Namn och adress på legitimationen jämförs med uppgifterna i avtalet."}</li><li>{lang === "da" ? "Aftalen underskrives på telefonen eller udskrives og underskrives fysisk af begge parter." : "Avtalet signeras på telefonen eller skrivs ut och undertecknas fysiskt av båda parter."}</li></ul><p className="id-privacy">{lang === "da" ? "Tag ikke kopi eller foto af legitimationen, medmindre personen udtrykkeligt har accepteret det og der er et lovligt behov." : "Ta inte en kopia eller ett foto av legitimationen om personen inte uttryckligen har godkänt det och det finns ett lagligt behov."}</p></section>
             <div className="agreement-signatures"><SignatureBox title={lang === "da" ? "Låners underskrift" : "Låntagarens underskrift"} name={agreementLoan.borrower.name} signature={agreementLoan.borrowerSignature} lang={lang} onSign={dataUrl => signAgreement(agreementLoan, "borrower", dataUrl)} /><SignatureBox title={lang === "da" ? "Ejers underskrift" : "Ägarens underskrift"} name={agreementLoan.item.owner} signature={agreementLoan.lenderSignature} lang={lang} onSign={dataUrl => signAgreement(agreementLoan, "lender", dataUrl)} /></div>
-            <p className="agreement-legal"><LockKeyhole size={15} />{lang === "da" ? "Ved underskrift bekræfter hver part, at oplysningerne er korrekte, og at den anden parts navn og adresse er kontrolleret mod forevist ID. MitID/BankID tilføjes i en senere version." : "Genom underskrift bekräftar varje part att uppgifterna är korrekta och att den andra partens namn och adress har kontrollerats mot visad legitimation. MitID/BankID läggs till i en senare version."}</p>
+            <p className="agreement-legal"><LockKeyhole size={15} />{lang === "da" ? "Ved underskrift bekræfter hver part, at oplysningerne er korrekte, og at den anden parts navn og adresse er kontrolleret mod forevist ID." : "Genom underskrift bekräftar varje part att uppgifterna är korrekta och att den andra partens namn och adress har kontrollerats mot visad legitimation."}</p>
           </div>
           <div className="agreement-actions no-print"><Button variant="outline" onClick={() => window.print()}><Printer size={17} />{lang === "da" ? "Udskriv / gem som PDF" : "Skriv ut / spara som PDF"}</Button><span>{agreementLoan.borrowerSignature && agreementLoan.lenderSignature ? (lang === "da" ? "Aftalen er underskrevet af begge og ligger under Mine lån" : "Avtalet är signerat av båda och finns under Mina lån") : (lang === "da" ? "Afventer begge underskrifter" : "Väntar på båda signaturerna")}</span></div>
         </DialogContent>}
-      </Dialog>
-
-      <Dialog open={showIdentityVerification} onOpenChange={setShowIdentityVerification}>
-        <DialogContent className="identity-dialog rounded-xl sm:max-w-[480px]">
-          <DialogHeader><span className="identity-logo"><LockKeyhole size={27} /></span><DialogTitle className="text-2xl font-bold">{profile?.place.country === "SE" ? "Verifiera med BankID" : "Verificer med MitID"}</DialogTitle><DialogDescription>{lang === "da" ? "Din identitet skal bekræftes, før du kan dele, leje eller underskrive en aftale." : "Din identitet måste bekräftas innan du kan dela, hyra eller signera ett avtal."}</DialogDescription></DialogHeader>
-          <div className="identity-benefits"><p><ShieldCheck size={18} /><span><b>{lang === "da" ? "Én verificeret person" : "En verifierad person"}</b>{lang === "da" ? "Navn og land knyttes sikkert til kontoen." : "Namn och land kopplas säkert till kontot."}</span></p><p><FileSignature size={18} /><span><b>{lang === "da" ? "Dokumenteret underskrift" : "Dokumenterad signatur"}</b>{lang === "da" ? "Aftaler registreres med bruger, dokument og tidspunkt." : "Avtal registreras med användare, dokument och tidpunkt."}</span></p></div>
-          {!profile && <p className="identity-warning">{lang === "da" ? "Opret først din profil og vælg Danmark eller Sverige." : "Skapa först din profil och välj Danmark eller Sverige."}</p>}
-          <Button disabled={!profile} className="h-13 bg-[#008EAC] text-white hover:bg-[#006F88]" onClick={() => { setIdentityVerified(true); setShowIdentityVerification(false); toast.success(profile?.place.country === "SE" ? "BankID-verificering gennemført i demoen." : "MitID-verificering gennemført i demoen."); }}><BadgeCheck size={19} />{profile?.place.country === "SE" ? "Fortsæt med BankID (demo)" : "Fortsæt med MitID (demo)"}</Button>
-          <p className="identity-disclaimer">{lang === "da" ? "Prøveversion: Der sendes ikke data til MitID eller BankID. Ved lancering erstattes knappen af en integration gennem en godkendt identitetsleverandør." : "Demoversion: Ingen data skickas till MitID eller BankID. Vid lansering ersätts knappen av en integration via en godkänd identitetsleverantör."}</p>
-        </DialogContent>
       </Dialog>
 
       <Dialog open={showAdd} onOpenChange={open => { setShowAdd(open); if (!open) resetItemForm(); }}>
@@ -660,7 +637,7 @@ function MobileNav({ icon: Icon, label, active, badge, onClick }: { icon: typeof
   return <button onClick={onClick} className={`mobile-nav-item ${active ? "active" : ""}`}><span className="relative"><Icon size={22} />{badge && <i />}</span><small>{label}</small></button>;
 }
 
-function RequestsView({ t, loans, lang, onChat, onAgreement }: { t: typeof copy.da; loans: Loan[]; lang: Lang; onChat: () => void; onAgreement: (loan: Loan) => void }) {
+function RequestsView({ t, loans, lang, loadError, onChat, onAgreement }: { t: typeof copy.da; loans: Loan[]; lang: Lang; loadError: boolean; onChat: () => void; onAgreement: (loan: Loan) => void }) {
   const demoAgreement: Loan = {
     id: "VC-DEMO-2026", item: initialListings[1], from: "2026-09-12", to: "2026-09-13", days: 2,
     total: initialListings[1].dailyPrice * 2, deposit: 50000, message: "Traileren afleveres rengjort og senest kl. 18.00.",
@@ -668,6 +645,7 @@ function RequestsView({ t, loans, lang, onChat, onAgreement }: { t: typeof copy.
   };
   return <div className="content-panel">
     <div className="mb-7"><p className="eyebrow">Veyro Circle</p><h1 className="page-title">{t.requests}</h1></div>
+    {loadError && <p className="agreements-load-note" role="status">{lang === "da" ? "Dine gemte aftaler kan ikke vises lige nu. Firebase-adgangen skal opdateres, men resten af Circle virker fortsat." : "Dina sparade avtal kan inte visas just nu. Firebase-åtkomsten behöver uppdateras, men resten av Circle fungerar fortfarande."}</p>}
     <p className="demo-note">{lang === "da" ? "Testforespørgsler gemmes i denne session. Ingen besked sendes til en rigtig ejer." : "Testförfrågningar sparas i denna session. Inget meddelande skickas till en riktig ägare."}</p>
     <button type="button" className="agreement-demo-card" onClick={() => onAgreement(demoAgreement)}>
       <span><FileSignature size={25} /></span><div><small>{lang === "da" ? "Klik her – kræver ingen profil" : "Klicka här – kräver ingen profil"}</small><b>{lang === "da" ? "Se eksempel på automatisk lejeaftale" : "Se exempel på automatiskt hyresavtal"}</b><p>{lang === "da" ? "Prøv underskrifterne, og se papir-/PDF-visningen." : "Prova signaturerna och se pappers-/PDF-vyn."}</p></div><strong>{lang === "da" ? "Åbn" : "Öppna"} →</strong>
@@ -715,18 +693,15 @@ function LoanRow({ title, owner, status, statusClass, icon: Icon, onChat, chatLa
   return <article className="loan-row"><div className="flex size-16 shrink-0 items-center justify-center rounded-xl bg-[#eef0f8]"><Icon size={31} className="text-[#008EAC]" /></div><div className="min-w-0 flex-1"><h3 className="truncate font-semibold">{title}</h3><p className="mt-1 text-sm text-[#73778b]">{owner} · {dates}</p><span className={`loan-status ${statusClass}`}>{status}</span></div><button onClick={onChat} className="chat-button"><MessageCircle size={18} /><span className="hidden sm:inline">{chatLabel}</span></button></article>;
 }
 
-function ProfileView({ t, lang, setLang, profile, authenticatedEmail, onSave, onLogout, verified, onVerify, listings, plan, onUpgrade, onManage, onAdd, onEdit, onDelete }: {
+function ProfileView({ t, lang, setLang, profile, authenticatedEmail, onSave, onLogout, plan, used, onUpgrade, onManage }: {
   t: typeof copy.da; lang: Lang; setLang: (lang: Lang) => void; profile: Profile | null; onSave: (p: Profile)=>void;
   authenticatedEmail?: string; onLogout: () => void;
-  verified: boolean; onVerify: () => void;
-  listings: Listing[]; plan: ListingPlan; onUpgrade: () => void; onManage: () => void; onAdd: () => void; onEdit: (item: Listing) => void; onDelete: (item: Listing) => void;
+  plan: ListingPlan; used: number; onUpgrade: () => void; onManage: () => void;
 }) {
   const limit = listingLimit(plan);
-  const used = listings.length;
   return <div className="content-panel">
     <div className="profile-head"><span className="profile-avatar"><CircleUserRound size={32} /></span><div className="min-w-0 flex-1"><p className="eyebrow">{lang === "da" ? "Din konto" : "Ditt konto"}</p><h1 className="page-title">{profile?.name || (lang === "da" ? "Log ind eller opret konto" : "Logga in eller skapa konto")}</h1>{profile && <><p className="mt-2 text-sm">{profile.email}</p><p className="mt-1 text-sm">{profile.place.postcode} {profile.place.city} · {profile.place.country}</p></>}</div>{profile && <Button type="button" variant="outline" className="logout-button" onClick={onLogout}><LogOut size={17} />{lang === "da" ? "Log ud" : "Logga ut"}</Button>}</div>
     <ProfileForm profile={profile} lang={lang} authenticatedEmail={authenticatedEmail} onSave={onSave} />
-    {profile && <section className={`identity-status ${verified ? "is-verified" : ""}`}><span>{verified ? <BadgeCheck size={24} /> : <LockKeyhole size={24} />}</span><div><small>{lang === "da" ? "Identitetskontrol" : "Identitetskontroll"}</small><b>{verified ? (profile.place.country === "SE" ? "BankID-verificeret" : "MitID-verificeret") : (lang === "da" ? "Verificering mangler" : "Verifiering saknas")}</b><p>{verified ? (lang === "da" ? "Du kan dele, leje og underskrive aftaler." : "Du kan dela, hyra och signera avtal.") : (lang === "da" ? "Kræves før du kan oprette annoncer eller sende forespørgsler." : "Krävs innan du kan skapa annonser eller skicka förfrågningar.")}</p></div>{!verified && <Button type="button" onClick={onVerify}>{profile.place.country === "SE" ? "BankID" : "MitID"}</Button>}</section>}
     {profile && <section className={`membership-card ${plan === "plus" ? "is-plus" : ""}`}>
       <div className="membership-top"><div className="membership-icon">{plan === "plus" ? <Crown size={22} /> : <PackagePlus size={22} />}</div><div><p className="eyebrow">{lang === "da" ? "Dit abonnement" : "Din prenumeration"}</p><h2>{plan === "plus" ? "Veyro Circle Plus" : (lang === "da" ? "Gratis medlemskab" : "Gratis medlemskap")}</h2></div><span className="plan-badge">{plan === "plus" ? (lang === "da" ? "Aktiv" : "Aktiv") : "0 kr."}</span></div>
       <div className="membership-usage"><div><span>{lang === "da" ? "Aktive ting" : "Aktiva saker"}</span><b>{used} {lang === "da" ? "af" : "av"} {limit}</b></div><Progress value={Math.min(100, used / limit * 100)} /></div>
@@ -735,11 +710,15 @@ function ProfileView({ t, lang, setLang, profile, authenticatedEmail, onSave, on
       {plan === "plus" && <Button type="button" onClick={onManage} variant="outline" className="membership-cta manage-subscription">{lang === "da" ? "Administrer abonnement" : "Hantera prenumeration"}</Button>}
     </section>}
     <section className="mt-5 rounded-xl border border-[#e0e3ec] bg-white p-5 sm:p-6"><h2 className="text-lg font-bold">{t.language}</h2><div className="mt-4 grid grid-cols-2 gap-3"><button className={`setting-choice ${lang === "da" ? "active" : ""}`} onClick={() => setLang("da")}>🇩🇰 Dansk{lang === "da" && <Check size={17} />}</button><button className={`setting-choice ${lang === "sv" ? "active" : ""}`} onClick={() => setLang("sv")}>🇸🇪 Svenska{lang === "sv" && <Check size={17} />}</button></div></section>
-    <section className="my-items">
+  </div>;
+}
+
+function ItemsView({ lang, profile, listings, plan, onAdd, onEdit, onDelete }: { lang: Lang; profile: Profile | null; listings: Listing[]; plan: ListingPlan; onAdd: () => void; onEdit: (item: Listing) => void; onDelete: (item: Listing) => void }) {
+  const used = listings.length;
+  return <div className="content-panel"><section className="my-items my-items-page">
       <div className="my-items-head"><div><p className="eyebrow">{lang === "da" ? "Dine annoncer" : "Dina annonser"}</p><h2>{lang === "da" ? "Mine ting" : "Mina saker"}</h2></div><Button type="button" onClick={onAdd} disabled={!profile || (plan === "plus" && used >= PLUS_LISTING_LIMIT)}><PackagePlus size={17} />{lang === "da" ? "Tilføj" : "Lägg till"}</Button></div>
       {!profile ? <p className="my-items-empty">{lang === "da" ? "Opret din konto for at dele eller udleje en ting." : "Skapa ditt konto för att dela eller hyra ut en sak."}</p> : listings.length === 0 ? <div className="my-items-empty"><ImagePlus size={28} /><p>{lang === "da" ? "Du har endnu ingen ting. Din første aktive annonce er gratis." : "Du har inga saker ännu. Din första aktiva annons är gratis."}</p><button type="button" onClick={onAdd}>{lang === "da" ? "Opret din første annonce" : "Skapa din första annons"}</button></div> : <div className="my-items-list">
         {listings.map(item => { const Icon = item.icon; return <article key={item.id} className="my-item-row"><div className={`my-item-thumb bg-gradient-to-br ${item.color}`}>{item.photos?.[0] ? <img src={item.photos[0].src} alt="" /> : <Icon size={27} />}</div><div className="min-w-0 flex-1"><h3>{item.name}</h3><p>{item.city} · {priceLabel(item, lang)}</p><small>{item.photos?.length || 0}/2 {lang === "da" ? "billeder" : "bilder"}</small></div><div className="my-item-actions"><button type="button" onClick={() => onEdit(item)}><Pencil size={16} />{lang === "da" ? "Rediger" : "Redigera"}</button><button type="button" className="delete" onClick={() => onDelete(item)}><Trash2 size={16} />{lang === "da" ? "Slet" : "Ta bort"}</button></div></article>; })}
       </div>}
-    </section>
-  </div>;
+    </section></div>;
 }
