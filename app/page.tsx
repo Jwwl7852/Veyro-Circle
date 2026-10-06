@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CircleAuthScreen, EmailVerificationScreen, FirebaseSetupNotice, circleSignOut, useCircleAuth } from "@/components/circle-auth";
 import { loadCircleProfile, saveCircleProfile } from "@/lib/firebase-profile";
+import { loadCircleAgreements, saveCircleAgreement, saveCircleSignature, type StoredAgreement } from "@/lib/firebase-agreements";
 import { openBilling } from "@/lib/billing-client";
 import { PlacePicker, CountrySelect, ProfileForm } from "@/components/marketplace-fields";
 import { type Place, type Profile, type Country, type ListingPlan, distanceKm, defaultPlace, seedPlace, parseDailyPrice, money, dayCount, todayLocal, canCreateListing, listingLimit, FREE_LISTING_LIMIT, PLUS_LISTING_LIMIT } from "@/lib/marketplace";
@@ -29,9 +30,11 @@ import {
 
 type Lang = "da" | "sv";
 type Tab = "home" | "search" | "requests" | "profile";
-type Loan = { id: string; item: Listing; from: string; to: string; days: number; total: number; deposit: number; message: string; borrower: Profile; borrowerSignedAt?: string; lenderSignedAt?: string };
+type AgreementSignature = { dataUrl: string; signedAt: string };
+type Loan = { id: string; item: Listing; from: string; to: string; days: number; total: number; deposit: number; message: string; borrower: Profile; borrowerUid?: string; lenderUid?: string; borrowerSignature?: AgreementSignature; lenderSignature?: AgreementSignature };
 type Listing = {
   id: number; name: string; owner: string; city: string; country: "DK" | "SE";
+  ownerStreet: string; ownerPhone: string; ownerUid?: string;
   distance: number; category: string; icon: typeof Drill; color: string;
   description: string; rating: number; availability: string;
   place: Place; dailyPrice: number; photos?: CompressedListingImage[]; owned?: boolean;
@@ -59,12 +62,12 @@ const categoryColors: Record<string, string> = {
 };
 
 const initialListings: Listing[] = [
-  { id: 1, place: seedPlace("Jystrup", "DK"), dailyPrice: 0, name: "Boremaskine med bits", owner: "Mikkel", city: "Jystrup", country: "DK", distance: 1.2, category: "tools", icon: Drill, color: categoryColors.tools, description: "18V boremaskine med et godt udvalg af bits og to batterier. Afleveres opladet.", rating: 4.9, availability: "Ledig fra i dag" },
-  { id: 2, place: seedPlace("Ringsted", "DK"), dailyPrice: 5000, name: "Brenderup trailer", owner: "Sofie", city: "Ringsted", country: "DK", distance: 6.8, category: "transport", icon: Truck, color: categoryColors.transport, description: "750 kg trailer med presenning. 13-polet stik. Husk eget næsehjulslås ved længere lån.", rating: 5, availability: "Ledig i weekenden" },
-  { id: 3, place: seedPlace("Køge", "DK"), dailyPrice: 3500, name: "Højtryksrenser", owner: "Amalie", city: "Køge", country: "DK", distance: 18, category: "garden", icon: SprayCan, color: categoryColors.garden, description: "God til terrasse og cykler. Terrasserenser og 8 meter slange følger med.", rating: 4.8, availability: "Ledig fra torsdag" },
-  { id: 4, place: seedPlace("Roskilde", "DK"), dailyPrice: 0, name: "Familietelt · 4 personer", owner: "Jonas", city: "Roskilde", country: "DK", distance: 24, category: "leisure", icon: TentTree, color: categoryColors.leisure, description: "Vandtæt tunneltelt med to sovekabiner. Nem opsætning og alle pløkker er med.", rating: 4.9, availability: "Ledig næste uge" },
-  { id: 5, place: seedPlace("Malmö", "SE"), dailyPrice: 7500, name: "Lastcykel", owner: "Elin", city: "Malmö", country: "SE", distance: 47, category: "bike", icon: Bike, color: categoryColors.bike, description: "El-lastcykel med plads til to børn. Hjelme kan lånes med efter aftale.", rating: 4.7, availability: "Ledig søndag" },
-  { id: 6, place: seedPlace("Lund", "SE"), dailyPrice: 0, name: "Kageopsats · 3 etager", owner: "Astrid", city: "Lund", country: "SE", distance: 58, category: "party", icon: PartyPopper, color: categoryColors.party, description: "Hvid porcelænsopsats til fest og fødselsdag. Skal vaskes i hånden.", rating: 5, availability: "Ledig fra fredag" },
+  { id: 1, place: seedPlace("Jystrup", "DK"), dailyPrice: 0, name: "Boremaskine med bits", owner: "Mikkel", ownerStreet: "Eksempelvej 8", ownerPhone: "+45 12 34 56 01", city: "Jystrup", country: "DK", distance: 1.2, category: "tools", icon: Drill, color: categoryColors.tools, description: "18V boremaskine med et godt udvalg af bits og to batterier. Afleveres opladet.", rating: 4.9, availability: "Ledig fra i dag" },
+  { id: 2, place: seedPlace("Ringsted", "DK"), dailyPrice: 5000, name: "Brenderup trailer", owner: "Sofie", ownerStreet: "Demovej 14", ownerPhone: "+45 12 34 56 02", city: "Ringsted", country: "DK", distance: 6.8, category: "transport", icon: Truck, color: categoryColors.transport, description: "750 kg trailer med presenning. 13-polet stik. Husk eget næsehjulslås ved længere lån.", rating: 5, availability: "Ledig i weekenden" },
+  { id: 3, place: seedPlace("Køge", "DK"), dailyPrice: 3500, name: "Højtryksrenser", owner: "Amalie", ownerStreet: "Prøvevej 21", ownerPhone: "+45 12 34 56 03", city: "Køge", country: "DK", distance: 18, category: "garden", icon: SprayCan, color: categoryColors.garden, description: "God til terrasse og cykler. Terrasserenser og 8 meter slange følger med.", rating: 4.8, availability: "Ledig fra torsdag" },
+  { id: 4, place: seedPlace("Roskilde", "DK"), dailyPrice: 0, name: "Familietelt · 4 personer", owner: "Jonas", ownerStreet: "Testgade 4", ownerPhone: "+45 12 34 56 04", city: "Roskilde", country: "DK", distance: 24, category: "leisure", icon: TentTree, color: categoryColors.leisure, description: "Vandtæt tunneltelt med to sovekabiner. Nem opsætning og alle pløkker er med.", rating: 4.9, availability: "Ledig næste uge" },
+  { id: 5, place: seedPlace("Malmö", "SE"), dailyPrice: 7500, name: "Lastcykel", owner: "Elin", ownerStreet: "Exempelgatan 9", ownerPhone: "+46 70 123 45 05", city: "Malmö", country: "SE", distance: 47, category: "bike", icon: Bike, color: categoryColors.bike, description: "El-lastcykel med plads til to børn. Hjelme kan lånes med efter aftale.", rating: 4.7, availability: "Ledig søndag" },
+  { id: 6, place: seedPlace("Lund", "SE"), dailyPrice: 0, name: "Kageopsats · 3 etager", owner: "Astrid", ownerStreet: "Demovägen 11", ownerPhone: "+46 70 123 45 06", city: "Lund", country: "SE", distance: 58, category: "party", icon: PartyPopper, color: categoryColors.party, description: "Hvid porcelænsopsats til fest og fødselsdag. Skal vaskes i hånden.", rating: 5, availability: "Ledig fra fredag" },
 ];
 
 const copy = {
@@ -177,7 +180,7 @@ export default function HomePage() {
     loadCircleProfile(user.uid).then(cloud => {
       if (!active) return;
       if (cloud) {
-        const next = { name: cloud.name, email: user.email || cloud.email, street: cloud.street, place: cloud.place, taxAcknowledgement: cloud.taxAcknowledgement };
+        const next = { name: cloud.name, email: user.email || cloud.email, phone: cloud.phone, street: cloud.street, place: cloud.place, taxAcknowledgement: cloud.taxAcknowledgement };
         setProfile(next); setLang(cloud.preferredLanguage); setOrigin(cloud.place); setNewPlace(cloud.place); setNewCountry(cloud.place.country);
         setIdentityVerified(cloud.verificationStatus === "verified"); setListingPlan(cloud.subscriptionPlan === "plus" ? "plus" : "free");
       } else setTab("profile");
@@ -185,6 +188,11 @@ export default function HomePage() {
       .finally(() => active && setProfileLoading(false));
     return () => { active = false; };
   }, [configured, lang, user?.email, user?.emailVerified, user?.uid]);
+
+  useEffect(() => {
+    if (!configured || !user?.uid) return;
+    loadCircleAgreements(user.uid).then(records => setLoans(records.map(agreementFromCloud))).catch(() => toast.error(lang === "da" ? "Dine aftaler kunne ikke hentes." : "Dina avtal kunde inte hämtas."));
+  }, [configured, lang, user?.uid]);
 
   const filtered = useMemo(() => {
     if (!origin && radius !== "all") return [];
@@ -278,7 +286,7 @@ export default function HomePage() {
       return;
     }
     const update = {
-      name: newName.trim(), owner: profile.name, city: newPlace.city,
+      name: newName.trim(), owner: profile.name, ownerStreet: profile.street, ownerPhone: profile.phone, ownerUid: user?.uid, city: newPlace.city,
       country: newCountry, place: newPlace, dailyPrice: amount, category: newCategory,
       icon: categories.find(c=>c.id === newCategory)?.icon || PackagePlus,
       color: categoryColors[newCategory] || categoryColors.tools,
@@ -319,17 +327,20 @@ export default function HomePage() {
     }
     const deposit = depositInput.trim() ? parseDailyPrice(depositInput) : 0;
     if (deposit === null) { setFormError(lang === "da" ? "Depositum skal være et gyldigt positivt beløb." : "Depositionen måste vara ett giltigt positivt belopp."); return; }
-    setLoans(items=>[{id: `VC-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`, item: selected, from, to, days, total: selected.dailyPrice * days, deposit, message: requestMessage.trim(), borrower: profile}, ...items]);
+    const loan: Loan = {id: `VC-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`, item: selected, from, to, days, total: selected.dailyPrice * days, deposit, message: requestMessage.trim(), borrower: profile, borrowerUid: user?.uid, lenderUid: selected.ownerUid};
+    setLoans(items=>[loan, ...items]);
+    if (configured && loan.borrowerUid && loan.lenderUid) void saveCircleAgreement(agreementForCloud(loan)).catch(() => toast.error(lang === "da" ? "Aftalen kunne ikke gemmes på profilerne." : "Avtalet kunde inte sparas på profilerna."));
     setShowRequest(false); setSelected(null); setTab("requests");
     toast.success(lang === "da" ? "Testforespørgsel gemt — ingen betaling trukket." : "Testförfrågan sparad — ingen betalning dragen.");
   }
 
-  function signAgreement(loan: Loan, role: "borrower" | "lender") {
+  function signAgreement(loan: Loan, role: "borrower" | "lender", dataUrl: string) {
     if (loan.id !== "VC-DEMO-2026" && !identityVerified) { setAgreementLoan(null); setShowIdentityVerification(true); return; }
-    const timestamp = new Date().toISOString();
-    const updated = { ...loan, [role === "borrower" ? "borrowerSignedAt" : "lenderSignedAt"]: timestamp };
+    const signature = { dataUrl, signedAt: new Date().toISOString() };
+    const updated = { ...loan, [role === "borrower" ? "borrowerSignature" : "lenderSignature"]: signature };
     setLoans(items => items.map(item => item.id === loan.id ? updated : item));
     setAgreementLoan(updated);
+    if (configured && loan.borrowerUid && loan.lenderUid) void saveCircleSignature(loan.id, role, signature).catch(() => toast.error(lang === "da" ? "Underskriften kunne ikke gemmes. Prøv igen." : "Signaturen kunde inte sparas. Försök igen."));
     toast.success(lang === "da" ? "Underskriften er registreret i prøveversionen." : "Underskriften har registrerats i demoversionen.");
   }
 
@@ -340,7 +351,6 @@ export default function HomePage() {
   return (
     <main className="min-h-screen bg-[#F2F6F8] text-[#172936]">
       <Toaster position="top-center" richColors />
-      <div className="demo-banner">{lang === "da" ? "Prøveversion · eksempelannoncer · ændringer nulstilles ved genindlæsning · ingen automatisk betaling" : "Demoversion · exempelannonser · ändringar återställs vid omladdning · ingen automatisk betalning"}</div>
       <header className="sticky top-0 z-40 border-b border-[#174354] bg-[#031725] text-white">
         <div className="mx-auto flex h-20 max-w-[1440px] items-center gap-4 px-4 sm:px-6 lg:px-10">
           <button className="brand-lockup" onClick={() => setTab("home")} aria-label={lang === "da" ? "Veyro Circle hjem" : "Veyro Circle hem"}>
@@ -478,7 +488,13 @@ export default function HomePage() {
         </aside>
       </div>
 
-      <footer className="data-credit"><img src="/branding/veyro-systems-logo.png" alt="Veyro Systems" /><span>{lang === "da" ? "Et produkt fra Veyro Systems ApS" : "En produkt från Veyro Systems ApS"}</span><small>{lang === "da" ? "Postområder og omtrentlige koordinater:" : "Postområden och ungefärliga koordinater:"} <a href="https://www.geonames.org/" target="_blank" rel="noreferrer">GeoNames</a> · <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer">CC BY 4.0</a></small></footer>
+      <footer className="site-footer">
+        <div className="footer-brand"><img src="/branding/veyro-systems-logo.png" alt="Veyro Systems" /><div><b>Veyro Circle</b><span>{lang === "da" ? "Et produkt fra Veyro Systems ApS" : "En produkt från Veyro Systems ApS"}</span></div></div>
+        <nav aria-label="Juridisk information">
+          <a href="/legal#privacy">{lang === "da" ? "Privatliv og GDPR" : "Integritet och GDPR"}</a><a href="/legal#terms">{lang === "da" ? "Handelsbetingelser" : "Köpvillkor"}</a><a href="/legal#cookies">Cookies</a><a href="/legal#complaints">{lang === "da" ? "Klager" : "Klagomål"}</a><a href="/legal#safety">{lang === "da" ? "Sikkerhed og ansvar" : "Säkerhet och ansvar"}</a>
+        </nav>
+        <div className="footer-meta"><span>© {new Date().getFullYear()} Veyro Systems ApS</span><small>{lang === "da" ? "Postområder og omtrentlige koordinater:" : "Postområden och ungefärliga koordinater:"} <a href="https://www.geonames.org/" target="_blank" rel="noreferrer">GeoNames</a> · <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer">CC BY 4.0</a></small></div>
+      </footer>
       <nav className="mobile-nav" aria-label="Mobilmenu">
         <MobileNav icon={Home} label={t.navHome} active={tab === "home"} onClick={() => setTab("home")} />
         <MobileNav icon={Search} label={t.navSearch} active={tab === "search"} onClick={() => setTab("search")} />
@@ -527,13 +543,14 @@ export default function HomePage() {
         {agreementLoan && <DialogContent className="agreement-dialog max-h-[94vh] overflow-y-auto rounded-xl sm:max-w-[760px]">
           <div className="print-agreement">
             <DialogHeader className="agreement-header"><p className="eyebrow">Veyro Circle · {agreementLoan.id}</p><DialogTitle className="text-2xl font-bold">{lang === "da" ? "Leje- og låneaftale" : "Hyres- och låneavtal"}</DialogTitle><DialogDescription>{lang === "da" ? "Automatisk aftale mellem ejeren og låneren" : "Automatiskt avtal mellan ägaren och låntagaren"}</DialogDescription></DialogHeader>
-            <div className="agreement-parties"><AgreementParty title={lang === "da" ? "Udlejer / ejer" : "Uthyrare / ägare"} name={agreementLoan.item.owner} address={`${agreementLoan.item.city}, ${agreementLoan.item.country}`} /><AgreementParty title={lang === "da" ? "Låner / lejer" : "Låntagare / hyrestagare"} name={agreementLoan.borrower.name} address={`${agreementLoan.borrower.street}, ${agreementLoan.borrower.place.postcode} ${agreementLoan.borrower.place.city}`} /></div>
+            <div className="agreement-parties"><AgreementParty title={lang === "da" ? "Udlejer / ejer" : "Uthyrare / ägare"} name={agreementLoan.item.owner} street={agreementLoan.item.ownerStreet} postcode={agreementLoan.item.place.postcode} city={agreementLoan.item.place.city} phone={agreementLoan.item.ownerPhone} /><AgreementParty title={lang === "da" ? "Låner / lejer" : "Låntagare / hyrestagare"} name={agreementLoan.borrower.name} street={agreementLoan.borrower.street} postcode={agreementLoan.borrower.place.postcode} city={agreementLoan.borrower.place.city} phone={agreementLoan.borrower.phone} /></div>
             <dl className="agreement-facts"><div><dt>{lang === "da" ? "Genstand" : "Föremål"}</dt><dd>{agreementLoan.item.name}</dd></div><div><dt>{lang === "da" ? "Periode" : "Period"}</dt><dd>{agreementLoan.from} – {agreementLoan.to} ({agreementLoan.days} {lang === "da" ? "dage" : "dagar"})</dd></div><div><dt>{lang === "da" ? "Lejepris" : "Hyra"}</dt><dd>{agreementLoan.total ? money(agreementLoan.total, agreementLoan.item.country, lang) : t.free}</dd></div><div><dt>{lang === "da" ? "Depositum" : "Deposition"}</dt><dd>{agreementLoan.deposit ? money(agreementLoan.deposit, agreementLoan.item.country, lang) : (lang === "da" ? "Intet aftalt" : "Ingen avtalad")}</dd></div></dl>
             <section className="agreement-terms"><h3>{lang === "da" ? "Aftalens vilkår" : "Avtalsvillkor"}</h3><ol><li>{lang === "da" ? "Genstanden udleveres i den beskrevne stand. Parterne bør dokumentere standen med billeder ved udlevering og aflevering." : "Föremålet lämnas ut i beskrivet skick. Parterna bör dokumentera skicket med bilder vid utlämning och återlämning."}</li><li>{lang === "da" ? "Låneren skal bruge genstanden forsvarligt og returnere den senest på slutdatoen. Tid og sted aftales mellem parterne." : "Låntagaren ska använda föremålet aktsamt och återlämna det senast på slutdagen. Tid och plats avtalas mellan parterna."}</li><li>{lang === "da" ? "Skader, bortkomst, betaling, depositum og eventuel erstatning afgøres mellem parterne efter gældende ret. Veyro Circle er formidler og ikke part i aftalen." : "Skador, förlust, betalning, deposition och eventuell ersättning avgörs mellan parterna enligt gällande rätt. Veyro Circle förmedlar kontakten och är inte part i avtalet."}</li></ol>{agreementLoan.message && <p><b>{lang === "da" ? "Særlig aftale:" : "Särskild överenskommelse:"}</b> {agreementLoan.message}</p>}</section>
-            <div className="agreement-signatures"><SignatureBox title={lang === "da" ? "Låners underskrift" : "Låntagarens underskrift"} name={agreementLoan.borrower.name} signedAt={agreementLoan.borrowerSignedAt} lang={lang} onSign={() => signAgreement(agreementLoan, "borrower")} /><SignatureBox title={lang === "da" ? "Ejers underskrift" : "Ägarens underskrift"} name={agreementLoan.item.owner} signedAt={agreementLoan.lenderSignedAt} lang={lang} onSign={() => signAgreement(agreementLoan, "lender")} /></div>
-            <p className="agreement-legal"><LockKeyhole size={15} />{lang === "da" ? "Prøveversion: Underskriften registrerer navn og tidspunkt i denne session. En produktionsversion bør identificere hver part med MitID/BankID og låse dokumentets indhold efter første underskrift." : "Demoversion: Signaturen registrerar namn och tidpunkt i den här sessionen. En produktionsversion bör identifiera varje part med BankID/MitID och låsa dokumentets innehåll efter den första signaturen."}</p>
+            <section className="agreement-id-check"><h3><ShieldCheck size={19} />{lang === "da" ? "Identitetskontrol ved overdragelsen" : "Identitetskontroll vid överlämningen"}</h3><p>{lang === "da" ? "Indtil MitID/BankID bliver tilgængeligt i Veyro Circle, skal parterne sikre sig, hvem de indgår aftalen med." : "Tills MitID/BankID finns i Veyro Circle ska parterna säkerställa vem de ingår avtalet med."}</p><ul><li>{lang === "da" ? "Begge parter foreviser gyldig billedlegitimation med navn og adresse." : "Båda parter visar giltig fotolegitimation med namn och adress."}</li><li>{lang === "da" ? "Navn og adresse på legitimationen sammenholdes med oplysningerne i aftalen." : "Namn och adress på legitimationen jämförs med uppgifterna i avtalet."}</li><li>{lang === "da" ? "Aftalen underskrives på telefonen eller udskrives og underskrives fysisk af begge parter." : "Avtalet signeras på telefonen eller skrivs ut och undertecknas fysiskt av båda parter."}</li></ul><p className="id-privacy">{lang === "da" ? "Tag ikke kopi eller foto af legitimationen, medmindre personen udtrykkeligt har accepteret det og der er et lovligt behov." : "Ta inte en kopia eller ett foto av legitimationen om personen inte uttryckligen har godkänt det och det finns ett lagligt behov."}</p></section>
+            <div className="agreement-signatures"><SignatureBox title={lang === "da" ? "Låners underskrift" : "Låntagarens underskrift"} name={agreementLoan.borrower.name} signature={agreementLoan.borrowerSignature} lang={lang} onSign={dataUrl => signAgreement(agreementLoan, "borrower", dataUrl)} /><SignatureBox title={lang === "da" ? "Ejers underskrift" : "Ägarens underskrift"} name={agreementLoan.item.owner} signature={agreementLoan.lenderSignature} lang={lang} onSign={dataUrl => signAgreement(agreementLoan, "lender", dataUrl)} /></div>
+            <p className="agreement-legal"><LockKeyhole size={15} />{lang === "da" ? "Ved underskrift bekræfter hver part, at oplysningerne er korrekte, og at den anden parts navn og adresse er kontrolleret mod forevist ID. MitID/BankID tilføjes i en senere version." : "Genom underskrift bekräftar varje part att uppgifterna är korrekta och att den andra partens namn och adress har kontrollerats mot visad legitimation. MitID/BankID läggs till i en senare version."}</p>
           </div>
-          <div className="agreement-actions no-print"><Button variant="outline" onClick={() => window.print()}><Printer size={17} />{lang === "da" ? "Udskriv / gem som PDF" : "Skriv ut / spara som PDF"}</Button><span>{agreementLoan.borrowerSignedAt && agreementLoan.lenderSignedAt ? (lang === "da" ? "Aftalen er underskrevet af begge" : "Avtalet är signerat av båda") : (lang === "da" ? "Afventer begge underskrifter" : "Väntar på båda signaturerna")}</span></div>
+          <div className="agreement-actions no-print"><Button variant="outline" onClick={() => window.print()}><Printer size={17} />{lang === "da" ? "Udskriv / gem som PDF" : "Skriv ut / spara som PDF"}</Button><span>{agreementLoan.borrowerSignature && agreementLoan.lenderSignature ? (lang === "da" ? "Aftalen er underskrevet af begge og ligger under Mine lån" : "Avtalet är signerat av båda och finns under Mina lån") : (lang === "da" ? "Afventer begge underskrifter" : "Väntar på båda signaturerna")}</span></div>
         </DialogContent>}
       </Dialog>
 
@@ -610,6 +627,26 @@ function priceLabel(item: Listing, lang: Lang) {
   return item.dailyPrice === 0 ? "Gratis" : money(item.dailyPrice, item.country, lang) + (lang === "da" ? " / dag" : " / dag");
 }
 
+function agreementForCloud(loan: Loan): StoredAgreement {
+  if (!loan.borrowerUid || !loan.lenderUid) throw new Error("Aftalen mangler parter");
+  return {
+    id:loan.id, borrowerUid:loan.borrowerUid, lenderUid:loan.lenderUid, participantUids:[loan.borrowerUid,loan.lenderUid], borrower:loan.borrower,
+    lender:{name:loan.item.owner,street:loan.item.ownerStreet,phone:loan.item.ownerPhone,place:loan.item.place},
+    item:{id:loan.item.id,name:loan.item.name,category:loan.item.category,country:loan.item.country,dailyPrice:loan.item.dailyPrice},
+    from:loan.from,to:loan.to,days:loan.days,total:loan.total,deposit:loan.deposit,message:loan.message,
+    borrowerSignature:loan.borrowerSignature,lenderSignature:loan.lenderSignature,
+  };
+}
+
+function agreementFromCloud(record: StoredAgreement): Loan {
+  const category = categories.find(item => item.id === record.item.category) || categories[1];
+  return {
+    id:record.id,from:record.from,to:record.to,days:record.days,total:record.total,deposit:record.deposit,message:record.message,
+    borrower:record.borrower,borrowerUid:record.borrowerUid,lenderUid:record.lenderUid,borrowerSignature:record.borrowerSignature,lenderSignature:record.lenderSignature,
+    item:{id:record.item.id,name:record.item.name,owner:record.lender.name,ownerStreet:record.lender.street,ownerPhone:record.lender.phone,ownerUid:record.lenderUid,city:record.lender.place.city,country:record.item.country,distance:0,category:record.item.category,icon:category.icon,color:categoryColors[record.item.category] || categoryColors.tools,description:"",rating:0,availability:"",place:record.lender.place,dailyPrice:record.item.dailyPrice},
+  };
+}
+
 function ListingCard({ item, freeLabel, onOpen }: { item: Listing; freeLabel: string; onOpen: () => void }) {
   const Icon = item.icon;
   return <button onClick={onOpen} className="listing-card text-left"><div className={`listing-image bg-gradient-to-br ${item.color}`}>{item.photos?.[0] ? <img src={item.photos[0].src} alt={item.name} /> : <Icon size={57} strokeWidth={1.4} className="text-[#172936]/70" />}<span className={`free-tag ${item.dailyPrice === 0 ? "is-free" : "is-paid"}`}>{freeLabel}</span><span className="heart-button"><Heart size={18} /></span>{item.photos && item.photos.length > 1 && <span className="photo-count"><Camera size={14} />{item.photos.length}</span>}</div><div className="p-4"><div className="flex items-start justify-between gap-2"><h3>{item.name}</h3><span className="mt-1 flex shrink-0 items-center gap-1 text-xs font-bold">{item.rating > 0 ? <><Star size={13} fill="#aa6500" className="text-[#aa6500]" />{item.rating}</> : "Ny"}</span></div><p className="mt-2 flex items-center gap-1.5 text-sm text-[#6d7185]"><MapPin size={15} />{item.city} · {Number.isFinite(item.distance) ? `ca. ${item.distance.toLocaleString("da-DK", {maximumFractionDigits: 1})} km` : ""}</p><div className="mt-3 flex items-center gap-2"><span className="size-2 rounded-full bg-[#38a66b]" /><span className="text-xs font-bold text-[#397252]">{item.availability}</span></div></div></button>;
@@ -627,7 +664,7 @@ function RequestsView({ t, loans, lang, onChat, onAgreement }: { t: typeof copy.
   const demoAgreement: Loan = {
     id: "VC-DEMO-2026", item: initialListings[1], from: "2026-09-12", to: "2026-09-13", days: 2,
     total: initialListings[1].dailyPrice * 2, deposit: 50000, message: "Traileren afleveres rengjort og senest kl. 18.00.",
-    borrower: { name: "Demo Bruger", email: "demo@example.dk", street: "Eksempelvej 12", place: seedPlace("Jystrup", "DK") },
+    borrower: { name: "Demo Bruger", email: "demo@example.dk", phone: "+45 12 34 56 78", street: "Eksempelvej 12", place: seedPlace("Jystrup", "DK") },
   };
   return <div className="content-panel">
     <div className="mb-7"><p className="eyebrow">Veyro Circle</p><h1 className="page-title">{t.requests}</h1></div>
@@ -640,7 +677,7 @@ function RequestsView({ t, loans, lang, onChat, onAgreement }: { t: typeof copy.
         <LoanRow title={loan.item.name} owner={loan.item.owner} status={t.awaiting} statusClass="waiting" icon={loan.item.icon} onChat={onChat} chatLabel={t.chat} dates={loan.from + " → " + loan.to} />
         <div className="request-price"><span>{loan.days} {lang === "da" ? "kalenderdage" : "kalenderdagar"}</span><b>{loan.total === 0 ? t.free : money(loan.total, loan.item.country, lang)}</b></div>
         {loan.message && <p>{loan.message}</p>}
-        <button type="button" className="agreement-open" onClick={() => onAgreement(loan)}><FileSignature size={18} /><span>{lang === "da" ? "Åbn automatisk lejeaftale" : "Öppna automatiskt hyresavtal"}</span><b>{loan.borrowerSignedAt && loan.lenderSignedAt ? (lang === "da" ? "Underskrevet" : "Signerat") : (lang === "da" ? "Klar til underskrift" : "Klar för signering")}</b></button>
+        <button type="button" className="agreement-open" onClick={() => onAgreement(loan)}><FileSignature size={18} /><span>{lang === "da" ? "Åbn automatisk lejeaftale" : "Öppna automatiskt hyresavtal"}</span><b>{loan.borrowerSignature && loan.lenderSignature ? (lang === "da" ? "Underskrevet" : "Signerat") : (lang === "da" ? "Klar til underskrift" : "Klar för signering")}</b></button>
       </article>)}
       <LoanRow title="Brenderup trailer · demo" owner="Sofie" status={t.approved} statusClass="approved" icon={Truck} onChat={onChat} chatLabel={t.chat} />
       <LoanRow title="Højtryksrenser · demo" owner="Amalie" status={t.activeLoan} statusClass="active-loan" icon={SprayCan} onChat={onChat} chatLabel={t.chat} />
@@ -648,12 +685,30 @@ function RequestsView({ t, loans, lang, onChat, onAgreement }: { t: typeof copy.
   </div>;
 }
 
-function AgreementParty({ title, name, address }: { title: string; name: string; address: string }) {
-  return <section><small>{title}</small><b>{name}</b><span>{address}</span></section>;
+function AgreementParty({ title, name, street, postcode, city, phone }: { title: string; name: string; street: string; postcode: string; city: string; phone: string }) {
+  return <section><small>{title}</small><b>{name}</b><span>{street}</span><span>{postcode} {city}</span><span>Telefon: {phone}</span></section>;
 }
 
-function SignatureBox({ title, name, signedAt, lang, onSign }: { title: string; name: string; signedAt?: string; lang: Lang; onSign: () => void }) {
-  return <section className={signedAt ? "is-signed" : ""}><small>{title}</small><b>{name}</b>{signedAt ? <><span className="signature-script">{name}</span><time>{new Intl.DateTimeFormat(lang === "da" ? "da-DK" : "sv-SE", { dateStyle: "medium", timeStyle: "short" }).format(new Date(signedAt))}</time></> : <Button type="button" onClick={onSign} className="no-print"><FileSignature size={17} />{lang === "da" ? "Underskriv i appen" : "Signera i appen"}</Button>}</section>;
+function SignatureBox({ title, name, signature, lang, onSign }: { title: string; name: string; signature?: AgreementSignature; lang: Lang; onSign: (dataUrl: string) => void }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const drawing = useRef(false);
+  const [hasInk, setHasInk] = useState(false);
+  function point(event: React.PointerEvent<HTMLCanvasElement>) {
+    const canvas = canvasRef.current!; const rect = canvas.getBoundingClientRect();
+    return { x:(event.clientX - rect.left) * canvas.width / rect.width, y:(event.clientY - rect.top) * canvas.height / rect.height };
+  }
+  function start(event: React.PointerEvent<HTMLCanvasElement>) {
+    const canvas = canvasRef.current!; const ctx = canvas.getContext("2d"); if (!ctx) return;
+    drawing.current = true; canvas.setPointerCapture(event.pointerId); const p = point(event);
+    ctx.beginPath(); ctx.moveTo(p.x,p.y); ctx.lineWidth = 3; ctx.lineCap = "round"; ctx.strokeStyle = "#172936";
+  }
+  function move(event: React.PointerEvent<HTMLCanvasElement>) {
+    if (!drawing.current) return; const ctx = canvasRef.current?.getContext("2d"); if (!ctx) return;
+    const p = point(event); ctx.lineTo(p.x,p.y); ctx.stroke(); setHasInk(true);
+  }
+  function stop() { drawing.current = false; }
+  function clear() { const canvas = canvasRef.current; if (canvas) canvas.getContext("2d")?.clearRect(0,0,canvas.width,canvas.height); setHasInk(false); }
+  return <section className={signature ? "is-signed" : ""}><small>{title}</small><b>{name}</b>{signature ? <><img className="signature-image" src={signature.dataUrl} alt={lang === "da" ? `Underskrift fra ${name}` : `Signatur från ${name}`} /><time>{new Intl.DateTimeFormat(lang === "da" ? "da-DK" : "sv-SE", { dateStyle: "medium", timeStyle: "short" }).format(new Date(signature.signedAt))}</time></> : <><div className="signature-pad no-print"><canvas ref={canvasRef} width={520} height={150} onPointerDown={start} onPointerMove={move} onPointerUp={stop} onPointerCancel={stop} aria-label={lang === "da" ? `Underskriftsfelt for ${name}` : `Signaturfält för ${name}`} /><span>{lang === "da" ? "Skriv med fingeren eller musen" : "Skriv med fingret eller musen"}</span></div><div className="signature-buttons no-print"><Button type="button" variant="outline" onClick={clear}>{lang === "da" ? "Ryd" : "Rensa"}</Button><Button type="button" disabled={!hasInk} onClick={() => { const dataUrl=canvasRef.current?.toDataURL("image/png"); if (dataUrl) onSign(dataUrl); }}><FileSignature size={17} />{lang === "da" ? "Godkend underskrift" : "Godkänn signatur"}</Button></div><div className="paper-signature-line"><span>{lang === "da" ? "Dato og fysisk underskrift" : "Datum och fysisk underskrift"}</span></div></>}</section>;
 }
 
 function LoanRow({ title, owner, status, statusClass, icon: Icon, onChat, chatLabel, dates = "12.–13. sep. (demo)" }: { title: string; owner: string; status: string; statusClass: string; icon: typeof Drill; onChat: () => void; chatLabel: string; dates?: string }) {
