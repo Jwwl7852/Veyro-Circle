@@ -61,7 +61,8 @@ test("agreement offers separate account storage and a standalone print document"
   assert.match(page, /Gem på min konto/);
   assert.match(page, /Udskriv aftalen/);
   assert.match(page, /function printAgreementDocument/);
-  assert.match(page, /window\.open\("", "_blank"/);
+  assert.match(page, /document\.createElement\("iframe"\)/);
+  assert.match(page, /printWindow\.print\(\)/);
   assert.match(page, /12 måneder/);
 });
 

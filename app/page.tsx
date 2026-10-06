@@ -626,15 +626,37 @@ function priceLabel(item: Listing, lang: Lang) {
 function printAgreementDocument(lang: Lang) {
   const agreement = document.querySelector<HTMLElement>(".print-agreement");
   if (!agreement) { toast.error(lang === "da" ? "Aftalen kunne ikke klargøres til udskrift." : "Avtalet kunde inte förberedas för utskrift."); return; }
-  const printWindow = window.open("", "_blank", "noopener,noreferrer,width=900,height=1000");
-  if (!printWindow) { toast.error(lang === "da" ? "Tillad pop op-vinduer for at udskrive aftalen." : "Tillåt popup-fönster för att skriva ut avtalet."); return; }
   const copy = agreement.cloneNode(true) as HTMLElement;
   copy.querySelectorAll(".no-print,canvas,button").forEach(node => node.remove());
-  printWindow.document.open();
-  printWindow.document.write(`<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><title>Veyro Circle · ${lang === "da" ? "Leje- og låneaftale" : "Hyres- och låneavtal"}</title><style>
+  const printFrame = document.createElement("iframe");
+  printFrame.setAttribute("aria-hidden", "true");
+  printFrame.style.position = "fixed";
+  printFrame.style.right = "0";
+  printFrame.style.bottom = "0";
+  printFrame.style.width = "0";
+  printFrame.style.height = "0";
+  printFrame.style.border = "0";
+  document.body.appendChild(printFrame);
+  const printDocument = printFrame.contentDocument;
+  const printWindow = printFrame.contentWindow;
+  if (!printDocument || !printWindow) {
+    printFrame.remove();
+    toast.error(lang === "da" ? "Aftalen kunne ikke klargøres til udskrift." : "Avtalet kunde inte förberedas för utskrift.");
+    return;
+  }
+  printDocument.open();
+  printDocument.write(`<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><title>Veyro Circle · ${lang === "da" ? "Leje- og låneaftale" : "Hyres- och låneavtal"}</title><style>
     @page{size:A4 portrait;margin:8mm}*{box-sizing:border-box;min-width:0}html,body{width:100%;margin:0;padding:0;overflow:visible}body{color:#172936;font:11px/1.32 Arial,sans-serif;overflow-wrap:anywhere}h1,h2,h3,p{margin-top:0}.print-agreement{width:100%;max-width:100%;overflow:hidden}.agreement-header{border-bottom:2px solid #008eac;padding-bottom:7px}.eyebrow,small,dt{color:#607583;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em}.agreement-parties,.agreement-signatures,.agreement-facts{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;margin-top:9px}.agreement-parties section,.agreement-signatures section{display:grid;gap:2px;border:1px solid #d6e1e6;padding:7px;break-inside:avoid}.agreement-facts{gap:0;border:1px solid #d6e1e6;break-inside:avoid}.agreement-facts div{padding:5px 7px;border-bottom:1px solid #d6e1e6}.agreement-facts dd{margin:1px 0 0;font-weight:700}.agreement-terms,.agreement-id-check{margin-top:9px}.agreement-terms ol,.agreement-id-check ul{margin:4px 0;padding-left:17px}.agreement-terms li+li,.agreement-id-check li+li{margin-top:2px}.agreement-id-check{border:1px solid #86b8c2;padding:7px;background:#eef9fa;break-inside:avoid}.agreement-id-check p{margin-bottom:4px}.agreement-signatures section{min-height:92px;border-style:dashed}.paper-signature-line{display:block;margin-top:auto;padding-top:30px;border-bottom:1px solid #172936}.agreement-legal{margin-top:8px;border-left:3px solid #d88920;padding:6px;background:#fff7df;break-inside:avoid}.signature-image{max-width:100%;max-height:60px;object-fit:contain}svg{display:none}
-  </style></head><body>${copy.outerHTML}<script>window.addEventListener('load',()=>setTimeout(()=>window.print(),150));<\/script></body></html>`);
-  printWindow.document.close();
+  </style></head><body>${copy.outerHTML}</body></html>`);
+  printDocument.close();
+  window.setTimeout(() => {
+    try {
+      printWindow.focus();
+      printWindow.print();
+    } finally {
+      window.setTimeout(() => printFrame.remove(), 1_000);
+    }
+  }, 250);
 }
 
 function agreementForCloud(loan: Loan): StoredAgreement {
