@@ -44,6 +44,7 @@ export function ProfileForm({ profile, lang, onSave, authenticatedEmail }: { pro
   const [password, setPassword] = useState("");
   const [passwordRepeat, setPasswordRepeat] = useState("");
   const [street, setStreet] = useState(profile?.street || "");
+  const [phone, setPhone] = useState(profile?.phone || "");
   const [country, setCountry] = useState<Country | "">(profile?.place.country || "");
   const [place, setPlace] = useState<Place | null>(profile?.place || null);
   const [error, setError] = useState("");
@@ -58,19 +59,20 @@ export function ProfileForm({ profile, lang, onSave, authenticatedEmail }: { pro
     if (!authenticatedEmail && !profile && (password.length < 8 || password !== passwordRepeat)) {
       setError(da ? "Adgangskoden skal være på mindst 8 tegn, og de to felter skal være ens." : "Lösenordet måste vara minst 8 tecken och de två fälten måste vara lika."); return;
     }
-    if (!country || !place || place.country !== country || !validProfile(name, street, place)) {
-      setError(da ? "Udfyld navn, vej og husnummer, og vælg postnummer/by fra listen." : "Fyll i namn, gata och husnummer och välj postnummer/ort från listan."); return;
+    if (!country || !place || place.country !== country || !validProfile(name, street, place, phone)) {
+      setError(da ? "Udfyld navn, telefonnummer, vej og husnummer, og vælg postnummer/by fra listen." : "Fyll i namn, telefonnummer, gata och husnummer och välj postnummer/ort från listan."); return;
     }
     if (!taxRead) {
       setError(da ? "Læs skatteinformationen, og bekræft, at du har læst den." : "Läs skatteinformationen och bekräfta att du har läst den."); return;
     }
-    onSave({name: name.trim(), email: email.trim().toLowerCase(), street: street.trim(), place: place!, taxAcknowledgement: {version: TAX_GUIDANCE_VERSION, country, acceptedAt: new Date().toISOString()}}); setError("");
+    onSave({name: name.trim(), email: email.trim().toLowerCase(), phone: phone.trim(), street: street.trim(), place: place!, taxAcknowledgement: {version: TAX_GUIDANCE_VERSION, country, acceptedAt: new Date().toISOString()}}); setError("");
   }}>
     <h2>{profile ? (da ? "Konto og oplysninger" : "Konto och uppgifter") : (da ? "Opret konto og profil" : "Skapa konto och profil")}</h2>
     <p>{da ? "Din e-mail er dit login, så du behøver ikke et separat brugernavn. Adresse, postnummer og by er obligatoriske." : "Din e-postadress är din inloggning, så du behöver inget separat användarnamn. Adress, postnummer och ort är obligatoriska."}</p>
     <label className="field-label">E-mail *<input type="email" autoComplete="email" required readOnly={Boolean(authenticatedEmail)} maxLength={254} value={email} onChange={e=>setEmail(e.target.value)} placeholder={da ? "navn@eksempel.dk" : "namn@exempel.se"} /></label>
     {!authenticatedEmail && !profile && <><div className="account-passwords"><label className="field-label">{da ? "Adgangskode" : "Lösenord"} *<input type="password" autoComplete="new-password" required minLength={8} maxLength={128} value={password} onChange={e=>setPassword(e.target.value)} /><small>{da ? "Mindst 8 tegn. Gem den aldrig i en besked eller annonce." : "Minst 8 tecken. Spara det aldrig i ett meddelande eller en annons."}</small></label><label className="field-label">{da ? "Gentag adgangskode" : "Upprepa lösenord"} *<input type="password" autoComplete="new-password" required minLength={8} maxLength={128} value={passwordRepeat} onChange={e=>setPasswordRepeat(e.target.value)} /></label></div><div className="password-help"><button type="button" onClick={()=>{if (!/^\S+@\S+\.\S+$/.test(email.trim())) { setError(da ? "Indtast først den e-mailadresse, som hører til kontoen." : "Ange först e-postadressen som hör till kontot."); setResetSent(false); return; } setError(""); setResetSent(true);}}>{da ? "Glemt adgangskode?" : "Glömt lösenordet?"}</button>{resetSent && <p role="status">{da ? `Vi har simuleret et nulstillingslink til ${email.trim()}.` : `Vi har simulerat en återställningslänk till ${email.trim()}.`}</p>}</div></>}
     <label className="field-label">{da ? "Fulde navn" : "Fullständigt namn"} *<input autoComplete="name" required minLength={2} maxLength={100} value={name} onChange={e=>setName(e.target.value)} /></label>
+    <label className="field-label">{da ? "Telefonnummer" : "Telefonnummer"} *<input type="tel" inputMode="tel" autoComplete="tel" required minLength={8} maxLength={24} value={phone} onChange={e=>setPhone(e.target.value)} placeholder={da ? "+45 12 34 56 78" : "+46 70 123 45 67"} /><small>{da ? "Telefonnummeret vises kun i en låne-/lejeaftale mellem parterne." : "Telefonnumret visas endast i ett låne-/hyresavtal mellan parterna."}</small></label>
     <div className="field-label">{da ? "Dit profilland · vælg ét land" : "Ditt profilland · välj ett land"} *<CountrySelect lang={lang} value={country} onChange={c=>{if(c !== country) {setCountry(c);setPlace(null);setTaxRead(false);}}} /><small>{da ? "Din profil hører til enten Danmark eller Sverige. Adresse og by skal ligge i det valgte land." : "Din profil tillhör antingen Danmark eller Sverige. Adressen och orten ska ligga i det valda landet."}</small></div>
     <label className="field-label">{da ? "Adresse · vej og husnummer" : "Adress · gata och husnummer"} *<input autoComplete="street-address" required minLength={4} maxLength={200} value={street} onChange={e=>setStreet(e.target.value)} placeholder={da ? "Vejnavn 12, 1. tv." : "Gatunamn 12, lgh 1001"} /></label>
     {country && <PlacePicker key={country} lang={lang} country={country} value={place} onChange={setPlace} label={da ? "Postnummer og by *" : "Postnummer och ort *"} />}
