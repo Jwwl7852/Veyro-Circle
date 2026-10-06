@@ -63,11 +63,11 @@ test("registration requires name, street/number and recognized postcode/city", (
   assert.equal(m.validProfile("Test Person", "Testvej", m.defaultPlace), false);
   assert.equal(m.validProfile("Test Person", "Testvej 12", null), false);
 });
-test("listing plans allow 3 free and never more than 20 active things", () => {
-  assert.equal(m.FREE_LISTING_LIMIT, 3);
+test("listing plans allow 1 free and never more than 20 active things", () => {
+  assert.equal(m.FREE_LISTING_LIMIT, 1);
   assert.equal(m.PLUS_LISTING_LIMIT, 20);
-  assert.equal(m.canCreateListing(2, "free"), true);
-  assert.equal(m.canCreateListing(3, "free"), false);
+  assert.equal(m.canCreateListing(0, "free"), true);
+  assert.equal(m.canCreateListing(1, "free"), false);
   assert.equal(m.canCreateListing(19, "plus"), true);
   assert.equal(m.canCreateListing(20, "plus"), false);
 });
