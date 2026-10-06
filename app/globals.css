@@ -158,6 +158,7 @@ button:focus-visible,a:focus-visible { outline:3px solid #819eb6; outline-offset
 .profile-form { margin-top:1.25rem; display:grid; gap:.75rem; padding-top:1.1rem; border-top:1px solid var(--border); }
 .profile-form h2 { font-size:1.15rem; font-weight:700; }
 .profile-form>p { font-size:.8125rem; line-height:1.5; color:#536777; }
+.saved-profile-heading { display:flex; align-items:center; justify-content:space-between; gap:1rem; }.saved-profile-heading p { margin-top:.25rem; color:var(--veyro-muted); font-size:.82rem; }.saved-profile-details { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.75rem; }.saved-profile-details div { border:1px solid var(--border); border-radius:7px; background:var(--veyro-surface); padding:.8rem; }.saved-profile-details dt { color:var(--veyro-muted); font-size:.75rem; font-weight:700; }.saved-profile-details dd { margin:.25rem 0 0; color:var(--veyro-text); line-height:1.45; }.profile-form-actions { display:flex; justify-content:flex-end; gap:.7rem; }.profile-form-actions button { min-width:150px; }
 .profile-fields-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.8rem 1rem; }
 .profile-fields-grid .field-label { align-content:start; }
 .profile-fields-grid .field-label input,.profile-fields-grid [data-slot="input-group"],.profile-fields-grid [data-slot="select-trigger"] { min-height:44px; height:44px; }
@@ -370,6 +371,7 @@ button:focus-visible,a:focus-visible { outline:3px solid #819eb6; outline-offset
   .photo-previews img { height:155px; }
   .account-passwords { grid-template-columns:1fr; }
   .profile-fields-grid { grid-template-columns:1fr; }
+  .saved-profile-heading { align-items:stretch; flex-direction:column; }.saved-profile-details { grid-template-columns:1fr; }.profile-form-actions { flex-direction:column-reverse; }.profile-form-actions button { width:100%; }
   .agreement-parties,.agreement-signatures,.agreement-facts { grid-template-columns:1fr; }
   .agreement-facts div:nth-child(odd) { border-right:0; }
   .agreement-actions { align-items:stretch; flex-direction:column; }
