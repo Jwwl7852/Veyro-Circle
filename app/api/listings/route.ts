@@ -11,7 +11,7 @@ type FirestoreValue = { nullValue?:null; booleanValue?:boolean; integerValue?:st
 type Photo = {src?:string;storagePath?:string;name?:string;bytes?:number;width?:number;height?:number};
 type ListingPayload = {id?:string;name?:string;description?:string;category?:string;country?:string;city?:string;place?:Record<string,JsonValue>;dailyPrice?:number;deposit?:number;photos?:Photo[];details?:Record<string,string>};
 
-const categories = new Set(["transport","tools","garden","leisure","party","kitchen","bike"]);
+const categories = new Set(["transport","tools","garden","leisure","party","kitchen","bike","other"]);
 function error(message:string, status=400) { return NextResponse.json({error:message},{status}); }
 function encode(value: JsonValue): FirestoreValue {
   if (value === null) return {nullValue:null};

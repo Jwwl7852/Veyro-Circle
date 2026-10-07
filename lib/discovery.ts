@@ -4,7 +4,7 @@ export type SavedSearch=SearchFilter & {id:string;alerts:boolean;createdAt:strin
 export type Preferences={favorites:string[];searches:SavedSearch[]};
 export function cleanSearch(raw:unknown):SearchFilter|null {
   if(!raw||typeof raw!=="object")return null;const v=raw as Record<string,unknown>;
-  if(typeof v.query!=="string"||v.query.length>100||!["ALL","DK","SE"].includes(String(v.country))||!["all","tools","transport","garden","leisure","party","kitchen","bike"].includes(String(v.category))||!["all","free","paid"].includes(String(v.price))||!["all","5","10","25","50","100","200"].includes(String(v.radius)))return null;
+  if(typeof v.query!=="string"||v.query.length>100||!["ALL","DK","SE"].includes(String(v.country))||!["all","tools","transport","garden","leisure","party","kitchen","bike","other"].includes(String(v.category))||!["all","free","paid"].includes(String(v.price))||!["all","5","10","25","50","100","200"].includes(String(v.radius)))return null;
   const placeId=typeof v.placeId==="string"?v.placeId:"";
   if(v.radius!=="all"&&!places.some(p=>p.id===placeId))return null;
   return {query:v.query.trim(),country:String(v.country),category:String(v.category),price:String(v.price),radius:String(v.radius),placeId};
