@@ -667,9 +667,7 @@ export default function HomePage() {
               <SideNav icon={Heart} label={lang === "da" ? "Mine favoritter" : "Mina favoriter"} active={tab === "home" && onlyFavorites} onClick={openFavorites} />
               <SideNav icon={CircleUserRound} label={t.navProfile} active={tab === "profile"} onClick={() => navigate("profile")} />
             </nav>
-            <Button className="h-12 w-full rounded-xl bg-[#008EAC] text-[15px] font-bold text-white hover:bg-[#006F88]" onClick={openAdd}>
-              <PackagePlus className="mr-2" size={19} />{t.addItem}
-            </Button>
+
             <div className="rounded-xl bg-[#16866B] p-5 text-white">
               <ShieldCheck className="mb-4 text-[#f5bf42]" size={28} />
               <h3 className="font-bold">{t.trust}</h3>
