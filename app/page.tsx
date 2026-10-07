@@ -372,6 +372,13 @@ export default function HomePage() {
   },[user?.uid,user?.emailVerified]);
   const savedFilter:SearchFilter={query,country,category,price:priceFilter,radius,placeId:origin?.id??""};
   const savedMatches=prefs.searches.filter(s=>s.alerts).reduce((sum,s)=>sum+listings.filter(i=>!i.owned&&i.createdAt&&i.createdAt>s.seenThrough&&matchesSearch(s,i)).length,0);
+  function openFavorites() {
+    if (!user) { setAuthOpen(true); return; }
+    setQuery(""); setCountry("ALL"); setCategory("all"); setPriceFilter("all");
+    setRadius("all"); setSearchFrom(""); setSearchTo("");
+    setOnlyFavorites(true); setTab("home");
+  }
+  function openHome() { setOnlyFavorites(false); setTab("home"); }
   function applySearch(filter:SearchFilter){setQuery(filter.query);setCountry(filter.country as "ALL"|"DK"|"SE");setCategory(filter.category);setPriceFilter(filter.price);setRadius(filter.radius);setOrigin(places.find(p=>p.id===filter.placeId)??null);setSearchFrom("");setSearchTo("");setOnlyFavorites(false);setTab("home");setNotificationsOpen(false);}
   async function favorite(item:Listing){if(!user){setAuthOpen(true);return;}setFavoriteBusy(item.id);try{setPrefs(await communityFetch("/api/preferences",{action:"favorite",id:item.id,enabled:!prefs.favorites.includes(item.id)}));}catch{toast.error(lang==="da"?"Favoritten kunne ikke gemmes. Prøv igen.":"Favoriten kunde inte sparas. Försök igen.");}finally{setFavoriteBusy(null);}}
   function navigate(next:Tab) {if(!user && next!=="home" && next!=="wanted"){setAuthOpen(true);return;}setTab(next);}
@@ -631,7 +638,7 @@ export default function HomePage() {
       <Toaster position="top-center" richColors />
       <header className="app-header sticky top-0 z-40 border-b border-[#174354] bg-[#031725] text-white">
         <div className="app-header-inner mx-auto flex h-20 max-w-[1440px] items-center gap-4 px-4 sm:px-6 lg:px-10">
-          <button className="brand-lockup" onClick={() => setTab("home")} aria-label={lang === "da" ? "Veyro Circle hjem" : "Veyro Circle hem"}>
+          <button className="brand-lockup" onClick={openHome} aria-label={lang === "da" ? "Veyro Circle hjem" : "Veyro Circle hem"}>
             <img src="/branding/veyro-systems-logo.png" alt="Veyro Systems" /><span>Circle</span>
           </button>
           <div className="ml-auto flex items-center gap-2">
@@ -650,11 +657,12 @@ export default function HomePage() {
         <aside className="hidden lg:block">
           <div className="sticky top-24 space-y-6">
             <nav className="space-y-1" aria-label="Hovedmenu">
-              <SideNav icon={Home} label={t.navHome} active={tab === "home"} onClick={() => setTab("home")} />
+              <SideNav icon={Home} label={t.navHome} active={tab === "home" && !onlyFavorites} onClick={openHome} />
               <SideNav icon={Search} label={lang === "da" ? "Jeg søger" : "Jag söker"} active={tab === "wanted"} onClick={() => navigate("wanted")} />
               <SideNav icon={MapIcon} label={lang === "da" ? "Kort" : "Karta"} active={tab === "map"} onClick={() => navigate("map")} />
               <SideNav icon={ImagePlus} label={t.navItems} active={tab === "items"} onClick={() => navigate("items")} />
               <SideNav icon={CalendarDays} label={t.navRequests} active={tab === "requests"} badge={awaitingCount ? String(awaitingCount) : undefined} onClick={() => navigate("requests")} />
+              <SideNav icon={Heart} label={lang === "da" ? "Mine favoritter" : "Mina favoriter"} active={tab === "home" && onlyFavorites} onClick={openFavorites} />
               <SideNav icon={CircleUserRound} label={t.navProfile} active={tab === "profile"} onClick={() => navigate("profile")} />
             </nav>
             <Button className="h-12 w-full rounded-xl bg-[#008EAC] text-[15px] font-bold text-white hover:bg-[#006F88]" onClick={openAdd}>
@@ -736,20 +744,17 @@ export default function HomePage() {
                 </button>;
               })}
             </div>
-            <div className="discovery-toolbar"><button aria-pressed={onlyFavorites} onClick={()=>{if(!user){setAuthOpen(true);return;}setOnlyFavorites(v=>!v);}}><Heart size={18}/>{onlyFavorites?(lang==="da"?"Vis alle ting":"Visa alla saker"):(lang==="da"?"Mine favoritter":"Mina favoriter")}</button></div>
-            <button className="wanted-link" onClick={()=>navigate("wanted")}><Search size={18}/>{lang === "da" ? "Finder du ikke det, du søger? Opret en efterlysning" : "Hittar du inte det du söker? Skapa en efterlysning"}</button>
-            {user && <SavedSearches lang={lang} prefs={prefs} filter={savedFilter} onChange={setPrefs} onApply={applySearch} items={listings} />}
             <div className="mb-4 mt-7 flex items-end justify-between">
-              <div><p className="text-sm font-bold uppercase tracking-[0.14em] text-[#777b90]">{`${filtered.length} ${t.results}`}{radius !== "all" ? ` · ${radius} km` : ""}</p><h2 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">{t.popular}</h2></div>
+              <div><p className="text-sm font-bold uppercase tracking-[0.14em] text-[#777b90]">{`${filtered.length} ${t.results}`}{radius !== "all" ? ` · ${radius} km` : ""}</p><h2 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">{onlyFavorites ? (lang === "da" ? "Mine favoritter" : "Mina favoriter") : t.popular}</h2></div>
             </div>
             {listingsLoading ? <p role="status">{lang === "da" ? "Henter annoncer…" : "Hämtar annonser…"}</p> : listingsError ? <p role="alert">{lang === "da" ? "Annoncerne kunne ikke hentes. Genindlæs siden." : "Annonserna kunde inte hämtas. Ladda om sidan."}</p> : datePending || dateFailed || (datesEntered && !searchDatesValid) ? null : filtered.length ? <div className="listing-grid">{filtered.map((item) => <ListingCard key={item.id} item={item} lang={lang} freeLabel={priceLabel(item, lang)} periodDays={searchDays} favorite={prefs.favorites.includes(item.id)} busy={favoriteBusy===item.id} onFavorite={()=>void favorite(item)} onOpen={() => setSelected(item)} />)}</div> :
               <div className="rounded-xl border border-dashed border-[#cbd0dd] bg-white px-6 py-16 text-center"><Search className="mx-auto mb-4 text-[#85899b]" size={34} /><p className="font-bold">{t.noResults}</p></div>}
           </>}
 
-          {tab === "wanted" && <div className="content-panel"><h1 className="sr-only">{lang === "da" ? "Jeg søger" : "Jag söker"}</h1><button className="browse-back" onClick={()=>setTab("home")}>{lang === "da" ? "Tilbage til søgning og søgeområde" : "Tillbaka till sökning och sökområde"}</button><WantedBoard lang={lang} uid={user?.uid} origin={origin} radius={radius} items={listings} onLogin={()=>setAuthOpen(true)} onOpen={id=>{const item=listings.find(i=>i.id===id);if(item)setSelected(item);else toast.info(lang==="da"?"Annoncen er ikke længere tilgængelig.":"Annonsen är inte längre tillgänglig.");}} /></div>}
+          {tab === "wanted" && <div className="content-panel"><h1 className="sr-only">{lang === "da" ? "Jeg søger" : "Jag söker"}</h1><button className="browse-back" onClick={()=>setTab("home")}>{lang === "da" ? "Tilbage til søgning og søgeområde" : "Tillbaka till sökning och sökområde"}</button>{user && <SavedSearches lang={lang} prefs={prefs} filter={savedFilter} onChange={setPrefs} onApply={applySearch} items={listings} />}<WantedBoard lang={lang} uid={user?.uid} origin={origin} radius={radius} items={listings} onLogin={()=>setAuthOpen(true)} onOpen={id=>{const item=listings.find(i=>i.id===id);if(item)setSelected(item);else toast.info(lang==="da"?"Annoncen er ikke længere tilgængelig.":"Annonsen är inte längre tillgänglig.");}} /></div>}
           {tab === "map" && <div className="map-page"><h1 className="sr-only">{lang === "da" ? "Kort" : "Karta"}</h1>{profile ? <CommunityMap origin={profile.place} radiusKm={100} lang={lang} /> : <div className="content-panel"><p>{lang === "da" ? "Udfyld din profil for at se kortet med udgangspunkt i dit postnummer." : "Fyll i din profil för att se kartan med utgångspunkt i ditt postnummer."}</p><Button className="mt-4" onClick={()=>setTab("profile")}>{lang === "da" ? "Gå til konto" : "Gå till konto"}</Button></div>}</div>}
           {tab === "items" && <ItemsView lang={lang} profile={profile} listings={listings.filter(item => item.owned)} plan={listingPlan} onAdd={openAdd} onEdit={openEdit} onDelete={setPendingDelete} onCalendar={setCalendarItem} />}
-          {tab === "requests" && <RequestsView t={t} loans={loans} lang={lang} userUid={user?.uid ?? ""} loading={agreementsLoading} loadError={agreementsError} direction={loanDirection} setDirection={setLoanDirection} archive={loanArchive} setArchive={setLoanArchive} onChat={setChatLoan} onAgreement={openAgreement} onDecision={(loan,action)=>setPendingDecision({loan,action})} />}
+          {tab === "requests" && <><div className="discovery-toolbar"><button onClick={openFavorites}><Heart size={18}/>{lang === "da" ? "Mine favoritter" : "Mina favoriter"}</button></div><RequestsView t={t} loans={loans} lang={lang} userUid={user?.uid ?? ""} loading={agreementsLoading} loadError={agreementsError} direction={loanDirection} setDirection={setLoanDirection} archive={loanArchive} setArchive={setLoanArchive} onChat={setChatLoan} onAgreement={openAgreement} onDecision={(loan,action)=>setPendingDecision({loan,action})} /></>}
           {tab === "profile" && <ProfileView lang={lang} profile={profile} authenticatedEmail={user?.email || undefined} onSave={saveProfile}
             onLogout={logout} onSubscription={() => setTab("subscription")} />}
           {tab === "subscription" && <SubscriptionView lang={lang} plan={listingPlan} used={listings.filter(item => item.owned).length} onBack={() => setTab("profile")} onUpgrade={() => setShowUpgrade(true)} onManage={() => billing("portal")} />}
@@ -780,7 +785,8 @@ export default function HomePage() {
         <div className="footer-meta"><span>© {new Date().getFullYear()} Veyro Systems ApS</span><small>{lang === "da" ? "Postområder og omtrentlige koordinater:" : "Postområden och ungefärliga koordinater:"} <a href="https://www.geonames.org/" target="_blank" rel="noreferrer">GeoNames</a> · <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer">CC BY 4.0</a></small></div>
       </footer>
       <nav className="mobile-nav" aria-label="Mobilmenu">
-        <MobileNav icon={Home} label={t.navHome} active={tab === "home"} onClick={() => setTab("home")} />
+        <MobileNav icon={Home} label={t.navHome} active={tab === "home" && !onlyFavorites} onClick={openHome} />
+        <MobileNav icon={Search} label={lang === "da" ? "Jeg søger" : "Jag söker"} active={tab === "wanted"} onClick={() => navigate("wanted")} />
         <MobileNav icon={MapIcon} label={lang === "da" ? "Kort" : "Karta"} active={tab === "map"} onClick={() => navigate("map")} />
         <MobileNav icon={ImagePlus} label={t.navItems} active={tab === "items"} onClick={() => navigate("items")} />
         <button className="add-mobile" onClick={openAdd} aria-label={t.addItem}><PackagePlus size={25} /></button>
