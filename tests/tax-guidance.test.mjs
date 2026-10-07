@@ -42,6 +42,6 @@ test("new profile requires an explicit country before signup can continue", asyn
   assert.match(html, /type="email"/);
   assert.match(html, /type="password"[^>]*minLength="8"/);
   assert.match(html, /e-mail er dit login/);
-  assert.match(html, /disabled[^>]*>Opret testkonto/);
+  assert.match(html, /disabled[^>]*>Gem profil/);
   assert.doesNotMatch(html, /id="tax-heading"/);
 });

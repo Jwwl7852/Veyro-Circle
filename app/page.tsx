@@ -5,9 +5,10 @@ import { CircleAuthScreen, EmailVerificationScreen, FirebaseSetupNotice, circleS
 import { loadCircleProfile, saveCircleProfile } from "@/lib/firebase-profile";
 import { loadCircleAgreements, saveCircleAgreement, saveCircleSignature, type StoredAgreement } from "@/lib/firebase-agreements";
 import { sendCircleMessage, subscribeToCircleMessages, type CircleMessage } from "@/lib/firebase-messages";
+import { deleteCircleListing, loadCircleListingContact, saveCircleListing, subscribeToCircleListings, type CircleListingRecord } from "@/lib/firebase-listings";
 import { openBilling } from "@/lib/billing-client";
 import { PlacePicker, CountrySelect, ProfileForm } from "@/components/marketplace-fields";
-import { type Place, type Profile, type Country, type ListingPlan, distanceKm, defaultPlace, seedPlace, parseDailyPrice, money, dayCount, todayLocal, canCreateListing, listingLimit, FREE_LISTING_LIMIT, PLUS_LISTING_LIMIT } from "@/lib/marketplace";
+import { type Place, type Profile, type Country, type ListingPlan, distanceKm, defaultPlace, parseDailyPrice, money, dayCount, todayLocal, canCreateListing, listingLimit, FREE_LISTING_LIMIT, PLUS_LISTING_LIMIT } from "@/lib/marketplace";
 import { compressListingImage, formatImageSize, MAX_LISTING_IMAGES, type CompressedListingImage } from "@/lib/image-compression";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -34,7 +35,7 @@ type Tab = "home" | "items" | "requests" | "profile" | "subscription";
 type AgreementSignature = { dataUrl: string; signedAt: string };
 type Loan = { id: string; item: Listing; from: string; to: string; days: number; total: number; deposit: number; message: string; borrower: Profile; borrowerUid?: string; lenderUid?: string; borrowerSignature?: AgreementSignature; lenderSignature?: AgreementSignature; saved?: boolean };
 type Listing = {
-  id: number; name: string; owner: string; city: string; country: "DK" | "SE";
+  id: string; name: string; owner: string; city: string; country: "DK" | "SE";
   ownerStreet: string; ownerPhone: string; ownerUid?: string;
   distance: number; category: string; icon: typeof Drill; color: string;
   description: string; rating: number; availability: string;
@@ -62,14 +63,20 @@ const categoryColors: Record<string, string> = {
   kitchen: "from-[#e7c5a2] to-[#cfaa80]",
 };
 
-const initialListings: Listing[] = [
-  { id: 1, place: seedPlace("Jystrup", "DK"), dailyPrice: 0, name: "Boremaskine med bits", owner: "Mikkel", ownerStreet: "Eksempelvej 8", ownerPhone: "+45 12 34 56 01", city: "Jystrup", country: "DK", distance: 1.2, category: "tools", icon: Drill, color: categoryColors.tools, description: "18V boremaskine med et godt udvalg af bits og to batterier. Afleveres opladet.", rating: 4.9, availability: "Ledig fra i dag" },
-  { id: 2, place: seedPlace("Ringsted", "DK"), dailyPrice: 5000, name: "Brenderup trailer", owner: "Sofie", ownerStreet: "Demovej 14", ownerPhone: "+45 12 34 56 02", city: "Ringsted", country: "DK", distance: 6.8, category: "transport", icon: Truck, color: categoryColors.transport, description: "750 kg trailer med presenning. 13-polet stik. Husk eget næsehjulslås ved længere lån.", rating: 5, availability: "Ledig i weekenden" },
-  { id: 3, place: seedPlace("Køge", "DK"), dailyPrice: 3500, name: "Højtryksrenser", owner: "Amalie", ownerStreet: "Prøvevej 21", ownerPhone: "+45 12 34 56 03", city: "Køge", country: "DK", distance: 18, category: "garden", icon: SprayCan, color: categoryColors.garden, description: "God til terrasse og cykler. Terrasserenser og 8 meter slange følger med.", rating: 4.8, availability: "Ledig fra torsdag" },
-  { id: 4, place: seedPlace("Roskilde", "DK"), dailyPrice: 0, name: "Familietelt · 4 personer", owner: "Jonas", ownerStreet: "Testgade 4", ownerPhone: "+45 12 34 56 04", city: "Roskilde", country: "DK", distance: 24, category: "leisure", icon: TentTree, color: categoryColors.leisure, description: "Vandtæt tunneltelt med to sovekabiner. Nem opsætning og alle pløkker er med.", rating: 4.9, availability: "Ledig næste uge" },
-  { id: 5, place: seedPlace("Malmö", "SE"), dailyPrice: 7500, name: "Lastcykel", owner: "Elin", ownerStreet: "Exempelgatan 9", ownerPhone: "+46 70 123 45 05", city: "Malmö", country: "SE", distance: 47, category: "bike", icon: Bike, color: categoryColors.bike, description: "El-lastcykel med plads til to børn. Hjelme kan lånes med efter aftale.", rating: 4.7, availability: "Ledig søndag" },
-  { id: 6, place: seedPlace("Lund", "SE"), dailyPrice: 0, name: "Kageopsats · 3 etager", owner: "Astrid", ownerStreet: "Demovägen 11", ownerPhone: "+46 70 123 45 06", city: "Lund", country: "SE", distance: 58, category: "party", icon: PartyPopper, color: categoryColors.party, description: "Hvid porcelænsopsats til fest og fødselsdag. Skal vaskes i hånden.", rating: 5, availability: "Ledig fra fredag" },
-];
+function listingFromCloud(record: CircleListingRecord, currentUid: string): Listing {
+  const category = categories.find(item => item.id === record.category);
+  return {
+    ...record,
+    ownerStreet:"",
+    ownerPhone:"",
+    distance:0,
+    icon:category?.icon ?? PackagePlus,
+    color:categoryColors[record.category] ?? categoryColors.tools,
+    rating:0,
+    availability:"Ledig nu",
+    owned:record.ownerUid === currentUid,
+  };
+}
 
 const copy = {
   da: {
@@ -88,7 +95,7 @@ const copy = {
     requests: "Mine lån", outgoing: "Sendte", incoming: "Modtagne", approved: "Godkendt",
     awaiting: "Afventer svar", activeLoan: "Aktivt lån", chat: "Skriv besked", impact: "Din effekt",
     loans: "gennemførte lån", saved: "kr. sparet i fællesskabet", itemsShared: "ting delt",
-    memberSince: "Medlem siden 2026", verify: "Demoprofil", country: "Land", language: "Sprog",
+    memberSince: "Medlem siden 2026", verify: "Bekræftet Circle-profil", country: "Land", language: "Sprog",
   },
   sv: {
     search: "Vad vill du låna?", nearby: "Båda länderna", denmark: "Danmark", sweden: "Sverige",
@@ -106,7 +113,7 @@ const copy = {
     requests: "Mina lån", outgoing: "Skickade", incoming: "Mottagna", approved: "Godkänd",
     awaiting: "Väntar på svar", activeLoan: "Aktivt lån", chat: "Skriv meddelande", impact: "Din effekt",
     loans: "genomförda lån", saved: "kr sparade i gemenskapen", itemsShared: "saker delade",
-    memberSince: "Medlem sedan 2026", verify: "Demoprofil", country: "Land", language: "Språk",
+    memberSince: "Medlem sedan 2026", verify: "Bekräftad Circle-profil", country: "Land", language: "Språk",
   },
 };
 
@@ -117,7 +124,7 @@ export default function HomePage() {
   const [country, setCountry] = useState<"ALL" | "DK" | "SE">("ALL");
   const [category, setCategory] = useState("all");
   const [query, setQuery] = useState("");
-  const [listings, setListings] = useState(initialListings);
+  const [listings, setListings] = useState<Listing[]>([]);
   const [selected, setSelected] = useState<Listing | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [showRequest, setShowRequest] = useState(false);
@@ -143,9 +150,11 @@ export default function HomePage() {
   const [formError, setFormError] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [newPhotos, setNewPhotos] = useState<CompressedListingImage[]>([]);
-  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Listing | null>(null);
   const [isCompressing, setIsCompressing] = useState(false);
+  const [listingSaving, setListingSaving] = useState(false);
+  const [requestPreparing, setRequestPreparing] = useState(false);
   const [listingPlan, setListingPlan] = useState<ListingPlan>("free");
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [profileLoading, setProfileLoading] = useState(false);
@@ -164,8 +173,7 @@ export default function HomePage() {
 
   async function billing(action: "checkout" | "portal") {
     if (!configured || !user) {
-      setListingPlan("plus"); setShowUpgrade(false);
-      toast.info(lang === "da" ? "Plus er kun simuleret, indtil Firebase og Stripe er konfigureret." : "Plus simuleras bara tills Firebase och Stripe har konfigurerats.");
+      toast.error(lang === "da" ? "Betaling er ikke konfigureret endnu." : "Betalning är inte konfigurerad ännu.");
       return;
     }
     setBillingBusy(true);
@@ -199,6 +207,16 @@ export default function HomePage() {
     });
   }, [configured, user?.uid]);
 
+  useEffect(() => {
+    if (!configured || !user?.emailVerified) return;
+    return subscribeToCircleListings(records => {
+      setListings(records.map(record => listingFromCloud(record, user.uid)));
+    }, error => {
+      console.error("Circle listings could not be loaded", error);
+      toast.error(lang === "da" ? "Annoncerne kunne ikke hentes fra Firebase." : "Annonserna kunde inte hämtas från Firebase.");
+    });
+  }, [configured, lang, user?.emailVerified, user?.uid]);
+
   const filtered = useMemo(() => {
     if (!origin && radius !== "all") return [];
     const q = query.trim().toLowerCase();
@@ -208,7 +226,7 @@ export default function HomePage() {
       (radius === "all" || item.distance <= Number(radius)) &&
       (priceFilter === "all" || (priceFilter === "free" ? item.dailyPrice === 0 : item.dailyPrice > 0)) &&
       (!q || `${item.name} ${item.city} ${item.description}`.toLowerCase().includes(q))
-    ).sort((a,b) => origin ? a.distance - b.distance : a.id - b.id);
+    ).sort((a,b) => origin ? a.distance - b.distance : a.id.localeCompare(b.id));
   }, [category, country, listings, query, origin, radius, priceFilter]);
 
   function resetItemForm() {
@@ -237,10 +255,9 @@ export default function HomePage() {
   }
 
   async function saveProfile(next: Profile) {
-    if (configured && user) {
-      try { await saveCircleProfile(user, next, lang); }
-      catch (cause) { const message = cause instanceof Error ? cause.message : (lang === "da" ? "Profilen kunne ikke gemmes. Prøv igen." : "Profilen kunde inte sparas. Försök igen."); toast.error(message); throw cause; }
-    } else toast.success(lang === "da" ? "Demoprofil gemt for denne session." : "Demoprofil sparad för denna session.");
+    if (!configured || !user) throw new Error(lang === "da" ? "Firebase er ikke konfigureret." : "Firebase är inte konfigurerat.");
+    try { await saveCircleProfile(user, next, lang); }
+    catch (cause) { const message = cause instanceof Error ? cause.message : (lang === "da" ? "Profilen kunne ikke gemmes. Prøv igen." : "Profilen kunde inte sparas. Försök igen."); toast.error(message); throw cause; }
     setProfile(next); setOrigin(next.place); setNewPlace(next.place); setNewCountry(next.place.country);
     toast.success(lang === "da" ? "Profilen er gemt sikkert." : "Profilen har sparats säkert.");
   }
@@ -276,7 +293,7 @@ export default function HomePage() {
     if (compressed.length) toast.success(lang === "da" ? "Billedet er komprimeret og klar." : "Bilden är komprimerad och klar.");
   }
 
-  function publishItem() {
+  async function publishItem() {
     const amount = pricing === "free" ? 0 : parseDailyPrice(priceInput);
     if (!profile || !newName.trim() || !newPlace || newPlace.country !== newCountry || amount === null) {
       setFormError(lang === "da" ? "Udfyld navn, vælg by, og indtast en positiv dagspris med højst 2 decimaler, hvis du vælger betaling." : "Fyll i namn, välj ort och ange ett positivt dagspris med högst 2 decimaler om du väljer betalning.");
@@ -289,33 +306,38 @@ export default function HomePage() {
       else toast.info(lang === "da" ? "Du kan højst have 20 aktive ting." : "Du kan ha högst 20 aktiva saker.");
       return;
     }
+    if (!configured || !user) { setFormError(lang === "da" ? "Du skal være logget ind for at gemme en annonce." : "Du måste vara inloggad för att spara en annons."); return; }
+    const id = editingId ?? crypto.randomUUID();
     const update = {
-      name: newName.trim(), owner: profile.name, ownerStreet: profile.street, ownerPhone: profile.phone, ownerUid: user?.uid, city: newPlace.city,
+      id, city: newPlace.city,
       country: newCountry, place: newPlace, dailyPrice: amount, category: newCategory,
-      icon: categories.find(c=>c.id === newCategory)?.icon || PackagePlus,
-      color: categoryColors[newCategory] || categoryColors.tools,
       description: newDescription || (lang === "da" ? "Til udlån efter aftale." : "För utlåning enligt överenskommelse."),
-      photos: newPhotos, owned: true,
+      photos: newPhotos, name:newName.trim(),
     };
-    if (editingId !== null) {
-      setListings(items => items.map(item => item.id === editingId ? { ...item, ...update } : item));
-    } else {
-      setListings(items => [{ id: Date.now(), distance: 0, rating: 0, availability: "Ledig nu", ...update }, ...items]);
+    setListingSaving(true); setFormError("");
+    try {
+      const previous = editingId ? listings.find(item => item.id === editingId)?.photos ?? [] : [];
+      await saveCircleListing(update, previous);
+      setOrigin(newPlace); setCountry("ALL"); setCategory("all"); setPriceFilter("all"); setQuery("");
+      setShowAdd(false); resetItemForm(); setTab("items");
+      toast.success(editingId !== null
+        ? (lang === "da" ? "Dine ændringer er gemt." : "Dina ändringar har sparats.")
+        : (lang === "da" ? "Annoncen er oprettet og gemt i Firebase." : "Annonsen har skapats och sparats i Firebase."));
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : (lang === "da" ? "Annoncen kunne ikke gemmes." : "Annonsen kunde inte sparas."));
+    } finally {
+      setListingSaving(false);
     }
-    setOrigin(newPlace); setCountry("ALL"); setCategory("all"); setPriceFilter("all"); setQuery("");
-    setShowAdd(false); resetItemForm(); setTab("items");
-    toast.success(editingId !== null
-      ? (lang === "da" ? "Dine ændringer er gemt." : "Dina ändringar har sparats.")
-      : (lang === "da" ? "Annoncen er oprettet i prøveversionen." : "Annonsen har skapats i demoversionen."));
   }
 
-  function deleteItem(item: Listing) {
+  async function deleteItem(item: Listing) {
     if (!item.owned) return;
-    setListings(items => items.filter(current => current.id !== item.id));
-    setLoans(items => items.filter(loan => loan.item.id !== item.id));
-    if (selected?.id === item.id) setSelected(null);
-    setPendingDelete(null);
-    toast.success(lang === "da" ? "Tingen er slettet." : "Saken har tagits bort.");
+    try {
+      await deleteCircleListing({id:item.id, ownerUid:user!.uid, photos:item.photos ?? []});
+      if (selected?.id === item.id) setSelected(null);
+      setPendingDelete(null);
+      toast.success(lang === "da" ? "Tingen og dens billeder er slettet." : "Saken och dess bilder har tagits bort.");
+    } catch (error) { toast.error(error instanceof Error ? error.message : (lang === "da" ? "Tingen kunne ikke slettes." : "Saken kunde inte tas bort.")); }
   }
 
   function openRequest() {
@@ -324,17 +346,23 @@ export default function HomePage() {
     setFrom(today); setTo(today); setFormError(""); setRequestMessage(""); setDepositInput(""); setShowRequest(true);
   }
 
-  function sendRequest() {
+  async function sendRequest() {
     if (!selected || !profile || !dateValid || days === null) {
       setFormError(lang === "da" ? "Vælg gyldige datoer. Slutdato må ikke ligge før startdato, og startdato må ikke være i fortiden." : "Välj giltiga datum. Slutdatum får inte vara före startdatum och startdatum får inte vara i det förflutna."); return;
     }
     const deposit = depositInput.trim() ? parseDailyPrice(depositInput) : 0;
     if (deposit === null) { setFormError(lang === "da" ? "Depositum skal være et gyldigt positivt beløb." : "Depositionen måste vara ett giltigt positivt belopp."); return; }
-    const ticket = `VC-${new Date().getFullYear()}-${crypto.randomUUID().replaceAll("-", "").slice(0, 12).toUpperCase()}`;
-    const loan: Loan = {id: ticket, item: selected, from, to, days, total: selected.dailyPrice * days, deposit, message: requestMessage.trim(), borrower: profile, borrowerUid: user?.uid, lenderUid: selected.ownerUid};
-    setLoans(items=>[loan, ...items]);
-    setShowRequest(false); setSelected(null); setTab("requests");
-    toast.success(lang === "da" ? "Forespørgslen er oprettet. Vælg om aftalen skal gemmes på kontoen eller udskrives." : "Förfrågan har skapats. Välj om avtalet ska sparas på kontot eller skrivas ut.");
+    setRequestPreparing(true); setFormError("");
+    try {
+      const contact = await loadCircleListingContact(selected.id);
+      const ticket = `VC-${new Date().getFullYear()}-${crypto.randomUUID().replaceAll("-", "").slice(0, 12).toUpperCase()}`;
+      const item = {...selected,owner:contact.name,ownerStreet:contact.street,ownerPhone:contact.phone,place:contact.place};
+      const loan: Loan = {id: ticket, item, from, to, days, total: selected.dailyPrice * days, deposit, message: requestMessage.trim(), borrower: profile, borrowerUid: user?.uid, lenderUid: selected.ownerUid};
+      setLoans(items=>[loan, ...items]);
+      setShowRequest(false); setSelected(null); setTab("requests");
+      toast.success(lang === "da" ? "Forespørgslen er oprettet. Vælg om aftalen skal gemmes på kontoen eller udskrives." : "Förfrågan har skapats. Välj om avtalet ska sparas på kontot eller skrivas ut.");
+    } catch (error) { setFormError(error instanceof Error ? error.message : (lang === "da" ? "Aftalen kunne ikke klargøres." : "Avtalet kunde inte förberedas.")); }
+    finally { setRequestPreparing(false); }
   }
 
   async function storeAgreement(loan: Loan) {
@@ -359,6 +387,7 @@ export default function HomePage() {
     toast.success(loan.saved ? (lang === "da" ? "Underskriften er registreret." : "Signaturen har registrerats.") : (lang === "da" ? "Underskriften er tilføjet. Vælg ‘Gem på min konto’ for at bevare aftalen." : "Signaturen har lagts till. Välj ‘Spara på mitt konto’ för att behålla avtalet."));
   }
 
+  if (!configured) return <main className="auth-page"><FirebaseSetupNotice lang={lang} /></main>;
   if (authLoading || (configured && user?.emailVerified && profileLoading)) return <main className="auth-page"><img className="auth-brand-logo" src="/branding/veyro-systems-logo.png" alt="Veyro Systems" /><p>{lang === "da" ? "Indlæser Veyro Circle…" : "Laddar Veyro Circle…"}</p></main>;
   if (configured && !user) return <CircleAuthScreen lang={lang} setLang={setLang} />;
   if (configured && user && !user.emailVerified) return <EmailVerificationScreen user={user} lang={lang} />;
@@ -383,7 +412,6 @@ export default function HomePage() {
         </div>
       </header>
 
-      {!configured && <FirebaseSetupNotice lang={lang} />}
       <div className="app-main-grid mx-auto grid max-w-[1440px] gap-7 px-4 pb-28 pt-6 sm:px-6 md:pb-10 lg:grid-cols-[220px_minmax(0,1fr)] lg:px-10 xl:grid-cols-[220px_minmax(0,1fr)_260px]">
         <aside className="hidden lg:block">
           <div className="sticky top-24 space-y-6">
@@ -540,7 +568,7 @@ export default function HomePage() {
             <p>{lang === "da" ? "Både start- og slutdagen tæller med. Betaling aftales direkte med ejeren. Der trækkes ingen penge i appen." : "Både start- och slutdagen räknas. Betalning avtalas direkt med ägaren. Inga pengar dras i appen."}</p>
           </div>
           {formError && <p role="alert" className="form-error">{formError}</p>}
-          <Button disabled={!dateValid} onClick={sendRequest} className="h-13 rounded-xl bg-[#008EAC] text-base font-semibold text-white hover:bg-[#006F88]">{t.send}</Button>
+          <Button disabled={!dateValid || requestPreparing} onClick={() => void sendRequest()} className="h-13 rounded-xl bg-[#008EAC] text-base font-semibold text-white hover:bg-[#006F88]">{requestPreparing ? (lang === "da" ? "Klargør aftale…" : "Förbereder avtal…") : t.send}</Button>
         </DialogContent>
       </Dialog>
 
@@ -591,7 +619,7 @@ export default function HomePage() {
           </fieldset>
           <label className="field-label">{t.description}<textarea value={newDescription} onChange={(e) => setNewDescription(e.target.value)} rows={4} placeholder={lang === "da" ? "Stand, tilbehør og det låneren bør vide…" : "Skick, tillbehör och det låntagaren bör veta…"} /></label>
           {formError && <p role="alert" className="form-error">{formError}</p>}
-          <Button disabled={isCompressing} onClick={publishItem} className="h-13 rounded-xl bg-[#008EAC] text-base font-semibold text-white hover:bg-[#006F88]">{editingId !== null ? (lang === "da" ? "Gem ændringer" : "Spara ändringar") : t.publish}</Button>
+          <Button disabled={isCompressing || listingSaving} onClick={() => void publishItem()} className="h-13 rounded-xl bg-[#008EAC] text-base font-semibold text-white hover:bg-[#006F88]">{listingSaving ? (lang === "da" ? "Gemmer…" : "Sparar…") : editingId !== null ? (lang === "da" ? "Gem ændringer" : "Spara ändringar") : t.publish}</Button>
         </DialogContent>
       </Dialog>
 
@@ -604,7 +632,7 @@ export default function HomePage() {
             <li><Check size={18} />{lang === "da" ? "Både gratis deling og betalt udlejning" : "Både gratis delning och betald uthyrning"}</li>
             <li><Check size={18} />{lang === "da" ? "Ingen provision på den private lejeaftale" : "Ingen provision på den privata uthyrningen"}</li>
           </ul>
-          <p className="demo-note">{configured ? (lang === "da" ? "Du sendes til Stripes sikre betalingsside. Abonnementet kan bagefter administreres fra din konto." : "Du skickas till Stripes säkra betalningssida. Prenumerationen kan sedan hanteras från ditt konto.") : (lang === "da" ? "Demotilstand: Der trækkes ikke penge, før Firebase og Stripe er konfigureret." : "Demoläge: Inga pengar dras innan Firebase och Stripe har konfigurerats.")}</p>
+          <p className="demo-note">{lang === "da" ? "Du sendes til Stripes sikre betalingsside. Abonnementet kan bagefter administreres fra din konto." : "Du skickas till Stripes säkra betalningssida. Prenumerationen kan sedan hanteras från ditt konto."}</p>
           <Button disabled={billingBusy} className="h-13 rounded-xl bg-[#008EAC] text-base font-bold text-white hover:bg-[#006F88]" onClick={() => billing("checkout")}>{billingBusy ? (lang === "da" ? "Åbner sikker betaling…" : "Öppnar säker betalning…") : (lang === "da" ? "Køb Circle Plus" : "Köp Circle Plus")}</Button>
           <Button variant="ghost" className="h-11 rounded-xl" onClick={() => setShowUpgrade(false)}>{lang === "da" ? "Ikke nu" : "Inte nu"}</Button>
         </DialogContent>
@@ -613,7 +641,7 @@ export default function HomePage() {
       <AlertDialog open={!!pendingDelete} onOpenChange={open => !open && setPendingDelete(null)}>
         {pendingDelete && <AlertDialogContent>
           <AlertDialogHeader><AlertDialogTitle>{lang === "da" ? "Slet denne ting?" : "Ta bort den här saken?"}</AlertDialogTitle><AlertDialogDescription>{lang === "da" ? `“${pendingDelete.name}” fjernes fra dine annoncer. Handlingen kan ikke fortrydes.` : `“${pendingDelete.name}” tas bort från dina annonser. Åtgärden kan inte ångras.`}</AlertDialogDescription></AlertDialogHeader>
-          <AlertDialogFooter><AlertDialogCancel>{lang === "da" ? "Annuller" : "Avbryt"}</AlertDialogCancel><AlertDialogAction variant="destructive" onClick={() => deleteItem(pendingDelete)}><Trash2 size={17} />{lang === "da" ? "Slet" : "Ta bort"}</AlertDialogAction></AlertDialogFooter>
+          <AlertDialogFooter><AlertDialogCancel>{lang === "da" ? "Annuller" : "Avbryt"}</AlertDialogCancel><AlertDialogAction variant="destructive" onClick={() => void deleteItem(pendingDelete)}><Trash2 size={17} />{lang === "da" ? "Slet" : "Ta bort"}</AlertDialogAction></AlertDialogFooter>
         </AlertDialogContent>}
       </AlertDialog>
     </main>

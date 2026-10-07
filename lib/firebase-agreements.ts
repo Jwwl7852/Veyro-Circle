@@ -11,7 +11,7 @@ export type StoredAgreement = {
   participantUids: string[];
   borrower: Profile;
   lender: { name: string; street: string; phone: string; place: Place };
-  item: { id: number; name: string; category: string; country: Country; dailyPrice: number };
+  item: { id: string; name: string; category: string; country: Country; dailyPrice: number };
   from: string;
   to: string;
   days: number;

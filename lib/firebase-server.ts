@@ -84,6 +84,18 @@ export async function getServerProfile(uid: string) {
   const data = await response.json() as { fields?: Record<string, FirestoreField> };
   const fields = data.fields ?? {};
   return {
+    name: fields.name?.stringValue ?? "",
+    email: fields.email?.stringValue ?? "",
+    phone: fields.phone?.stringValue ?? "",
+    street: fields.street?.stringValue ?? "",
+    place: {
+      id: fields.place?.mapValue?.fields?.id?.stringValue ?? "",
+      country: fields.place?.mapValue?.fields?.country?.stringValue === "SE" ? "SE" as const : "DK" as const,
+      postcode: fields.place?.mapValue?.fields?.postcode?.stringValue ?? "",
+      city: fields.place?.mapValue?.fields?.city?.stringValue ?? "",
+      lat: fields.place?.mapValue?.fields?.lat?.doubleValue ?? 0,
+      lon: fields.place?.mapValue?.fields?.lon?.doubleValue ?? 0,
+    },
     country: fields.place?.mapValue?.fields?.country?.stringValue === "SE" ? "SE" as const : "DK" as const,
     stripeCustomerId: fields.stripeCustomerId?.stringValue,
     subscriptionPlan: fields.subscriptionPlan?.stringValue === "plus" ? "plus" as const : "free" as const,

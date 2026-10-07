@@ -9,6 +9,7 @@ export type CompressedListingImage = {
   bytes: number;
   width: number;
   height: number;
+  storagePath?: string;
 };
 
 export function isSupportedImageType(type: string) {

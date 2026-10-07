@@ -9,12 +9,27 @@ test("Firebase example lists every required public web variable", async () => {
   for (const line of env.trim().split("\n")) assert.match(line, /^[A-Z0-9_]+=$/, "example values must stay empty");
 });
 
-test("Firestore rules bind profiles and listing ownership to auth uid", async () => {
+test("Firestore rules keep profile and listing mutations server-side", async () => {
   const rules = await readFile(new URL("../firestore.rules", import.meta.url), "utf8");
   assert.match(rules, /request\.auth\.uid == uid/);
-  assert.match(rules, /request\.resource\.data\.ownerUid == request\.auth\.uid/);
+  assert.match(rules, /match \/listings\/\{listingId\}/);
+  assert.match(rules, /Alle ændringer går gennem serveren/);
   assert.match(rules, /verificationStatus == resource\.data\.verificationStatus/);
   assert.match(rules, /subscriptionPlan == resource\.data\.subscriptionPlan/);
+});
+
+test("listing API enforces owner, subscription limit, deletion and image cleanup", async () => {
+  const api = await readFile(new URL("../app/api/listings/route.ts", import.meta.url), "utf8");
+  const client = await readFile(new URL("../lib/firebase-listings.ts", import.meta.url), "utf8");
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.match(api, /verifyFirebaseRequest/);
+  assert.match(api, /subscriptionPlan === "plus" \? 20 : 1/);
+  assert.match(api, /existing\.fields\?\.ownerUid/);
+  assert.match(api, /export async function DELETE/);
+  assert.match(client, /deleteListingImage/);
+  assert.match(client, /Promise\.allSettled/);
+  assert.doesNotMatch(page, /const initialListings/);
+  assert.doesNotMatch(page, /Eksempelvej|Demovej|Prøvevej|Testgade/);
 });
 
 test("Firestore chat is restricted to agreement participants and immutable messages", async () => {
