@@ -81,6 +81,17 @@ test("agreement offers separate account storage and a standalone print document"
   assert.match(page, /Tilbageleveret med bemærkninger/);
 });
 
+test("home uses a private postcode map with a 100 km default radius", async () => {
+  const page = await readFile(path.join(root, "app", "page.tsx"), "utf8");
+  const map = await readFile(path.join(root, "components", "community-map.tsx"), "utf8");
+  assert.match(page, /useState\("100"\)/);
+  assert.match(page, /<CommunityMap/);
+  assert.match(map, /tile\.openstreetmap\.org/);
+  assert.match(map, /onWheel/);
+  assert.match(map, /Navne, adresser og telefonnumre vises ikke/);
+  assert.match(map, /community-cluster/);
+});
+
 test("forwards progress semantics to the primitive", async () => {
   const { Progress } = await vite.ssrLoadModule("/components/ui/progress.tsx");
   const html = renderToStaticMarkup(React.createElement(Progress, { value: 37 }));

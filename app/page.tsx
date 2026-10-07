@@ -8,6 +8,7 @@ import { sendCircleMessage, subscribeToCircleMessages, type CircleMessage } from
 import { deleteCircleListing, loadCircleListingContact, saveCircleListing, subscribeToCircleListings, type CircleListingRecord } from "@/lib/firebase-listings";
 import { openBilling } from "@/lib/billing-client";
 import { PlacePicker, CountrySelect, ProfileForm } from "@/components/marketplace-fields";
+import { CommunityMap } from "@/components/community-map";
 import { type Place, type Profile, type Country, type ListingPlan, distanceKm, defaultPlace, parseDailyPrice, money, dayCount, todayLocal, canCreateListing, listingLimit, FREE_LISTING_LIMIT, PLUS_LISTING_LIMIT } from "@/lib/marketplace";
 import { compressListingImage, formatImageSize, MAX_LISTING_IMAGES, type CompressedListingImage } from "@/lib/image-compression";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
@@ -131,7 +132,7 @@ export default function HomePage() {
   const [newName, setNewName] = useState("");
   const [profile, setProfile] = useState<Profile | null>(null);
   const [origin, setOrigin] = useState<Place | null>(defaultPlace);
-  const [radius, setRadius] = useState("50");
+  const [radius, setRadius] = useState("100");
   const [priceFilter, setPriceFilter] = useState("all");
   const [newCountry, setNewCountry] = useState<Country>("DK");
   const [newPlace, setNewPlace] = useState<Place | null>(null);
@@ -514,6 +515,7 @@ export default function HomePage() {
                 {profile && <button onClick={()=>setOrigin(profile.place)}>{lang === "da" ? "Brug min by" : "Använd min ort"}</button>}
               </div>
             </section>
+            {origin && <CommunityMap origin={origin} radiusKm={radius === "all" ? null : Number(radius)} lang={lang} />}
             <div className="mt-4 flex flex-wrap items-center gap-2">
               <button className={`country-pill ${country === "ALL" ? "active" : ""}`} onClick={() => setCountry("ALL")}><MapPin size={17} />{t.nearby}</button>
               <button className={`country-pill ${country === "DK" ? "active" : ""}`} onClick={() => setCountry("DK")}><span>🇩🇰</span>{t.denmark}</button>
