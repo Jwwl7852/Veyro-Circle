@@ -678,6 +678,7 @@ export default function HomePage() {
 
         <section className="min-w-0">
           {tab === "home" && <>
+            {!onlyFavorites && <>
             {!user && <p className="guest-intro">{lang === "da" ? "Se ting i nærheden uden en konto. Log ind, når du vil låne, leje eller dele." : "Se saker i närheten utan konto. Logga in när du vill låna, hyra eller dela."}</p>}
             <section className="hero-card">
               <img src="/assets/neighbours-sharing.webp" alt="Naboer deler værktøj og trailer" />
@@ -742,12 +743,13 @@ export default function HomePage() {
               </div>
               <SavedSearches mode="save" lang={lang} prefs={prefs} filter={savedFilter} onChange={setPrefs} onApply={applySearch} items={listings} onLogin={user ? undefined : ()=>setAuthOpen(true)} />
             </section>
+            </>}
             <div className="mb-4 mt-7 flex items-end justify-between">
               <div><p className="text-sm font-bold uppercase tracking-[0.14em] text-[#777b90]">{`${filtered.length} ${t.results}`}{radius !== "all" ? ` · ${radius} km` : ""}</p><h2 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">{onlyFavorites ? (lang === "da" ? "Mine favoritter" : "Mina favoriter") : t.popular}</h2></div>
             </div>
             <div className="listing-view-toggle" role="group" aria-label={lang === "da" ? "Visning af annoncer" : "Annonsvisning"}><button aria-pressed={listingView === "list"} onClick={()=>setListingView("list")}><List size={18}/>{lang === "da" ? "Listevisning" : "Listvy"}</button><button aria-pressed={listingView === "kanban"} onClick={()=>setListingView("kanban")}><LayoutGrid size={18}/>Kanban</button></div>
             {listingsLoading ? <p role="status">{lang === "da" ? "Henter annoncer…" : "Hämtar annonser…"}</p> : listingsError ? <p role="alert">{lang === "da" ? "Annoncerne kunne ikke hentes. Genindlæs siden." : "Annonserna kunde inte hämtas. Ladda om sidan."}</p> : datePending || dateFailed || (datesEntered && !searchDatesValid) ? null : filtered.length ? <div className={`listing-grid ${listingView === "list" ? "listing-list" : ""}`}>{filtered.map((item) => <ListingCard key={item.id} item={item} lang={lang} freeLabel={priceLabel(item, lang)} periodDays={searchDays} favorite={prefs.favorites.includes(item.id)} busy={favoriteBusy===item.id} onFavorite={()=>void favorite(item)} onOpen={() => setSelected(item)} />)}</div> :
-              <div className="rounded-xl border border-dashed border-[#cbd0dd] bg-white px-6 py-16 text-center"><Search className="mx-auto mb-4 text-[#85899b]" size={34} /><p className="font-bold">{t.noResults}</p></div>}
+              <div className="rounded-xl border border-dashed border-[#cbd0dd] bg-white px-6 py-16 text-center"><Search className="mx-auto mb-4 text-[#85899b]" size={34} /><p className="font-bold">{onlyFavorites ? (lang === "da" ? "Du har ingen favoritter endnu. Tryk på hjertet på en annonce for at gemme den." : "Du har inga favoriter ännu. Tryck på hjärtat på en annons för att spara den.") : t.noResults}</p></div>}
           </>}
 
           {tab === "saved" && <div className="content-panel">{user && <SavedSearches lang={lang} prefs={prefs} filter={savedFilter} onChange={setPrefs} onApply={applySearch} items={listings} />}</div>}
