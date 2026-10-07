@@ -3,10 +3,11 @@
 import { auth } from "@/lib/firebase-client";
 import type { Country, Place, Profile } from "@/lib/marketplace";
 import type { Decision, WorkflowAgreement } from "@/lib/agreement-workflow";
+import type { AgreementPhotos } from "@/lib/agreement-photos";
 
-export type StoredSignature = { dataUrl: string; signedAt: string };
+export type StoredSignature = { dataUrl: string; signedAt: string; photoIds?:string[] };
 export type SignaturePhase = "handover" | "return";
-export type StoredAgreement = WorkflowAgreement & {
+export type StoredAgreement = WorkflowAgreement & AgreementPhotos & {
   id: string;
   borrowerUid: string;
   lenderUid?: string;
@@ -66,11 +67,11 @@ export async function updateCircleAgreement(id:string, action:Decision|"read"|"m
   agreementsChanged();
 }
 
-export async function saveCircleSignature(id: string, role: "borrower" | "lender", signature: StoredSignature, phase: SignaturePhase = "handover", seenNote = "") {
+export async function saveCircleSignature(id: string, role: "borrower" | "lender", signature: StoredSignature, phase: SignaturePhase = "handover", seenNote = "", seenPhotoIds:string[] = []) {
   if (!auth?.currentUser) throw new Error("Du skal være logget ind.");
-  const response = await fetch("/api/agreements",{method:"PATCH",headers:{"content-type":"application/json",authorization:`Bearer ${await auth.currentUser.getIdToken()}`},body:JSON.stringify({id,action:"signature",role,phase,signature,seenNote})});
+  const response = await fetch("/api/agreements",{method:"PATCH",headers:{"content-type":"application/json",authorization:`Bearer ${await auth.currentUser.getIdToken()}`},body:JSON.stringify({id,action:"signature",role,phase,signature,seenNote,seenPhotoIds})});
   const data = await response.json() as {error?:string;returnedAt?:string;returnCondition?:"good"|"remarks"};
-  if (!response.ok) throw new Error(data.error || "Underskriften kunne ikke gemmes.");
+  if (!response.ok) { agreementsChanged(); throw new Error(data.error || "Underskriften kunne ikke gemmes."); }
   agreementsChanged();
   return data;
 }

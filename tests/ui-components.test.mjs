@@ -22,6 +22,21 @@ after(async () => {
   await vite.close();
 });
 
+test("private photo controls are translated, camera-ready and do not expand the paper agreement",async()=>{
+  const {AgreementPhotos}=await vite.ssrLoadModule("/components/agreement-photos.tsx");
+  const common={id:"VC-2099-ABCDEF123456",phase:"handover",uid:"borrower",photos:[],editable:true,locked:false,busy:false,onBusy(){},onChange(){},reviewed:false,onReview(){}};
+  for (const [lang,choose] of [["da","Vælg billede"],["sv","Välj bild"]]) {
+    const html=renderToStaticMarkup(React.createElement(AgreementPhotos,{...common,lang}));
+    assert.ok(html.includes(choose));assert.match(html,/capture="environment"/);assert.match(html,/class="no-print"/);
+    const saved=renderToStaticMarkup(React.createElement(AgreementPhotos,{...common,lang,locked:true,photos:[{id:"uuid",bytes:1024,width:100,height:100}]}));
+    assert.match(saved,/evidence-print-reference/);assert.match(saved,/type="checkbox" disabled=""/);
+    assert.doesNotMatch(saved,/capture="environment"/);
+  }
+  const css=await readFile(path.join(root,"app/globals.css"),"utf8");
+  assert.match(css,/\.evidence-actions button[^}]*min-height:44px/);
+  assert.match(css,/@media\(max-width:480px\) \{ \.evidence-grid \{ grid-template-columns:minmax\(0,1fr\)/);
+});
+
 async function readCssTree(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
   const contents = await Promise.all(

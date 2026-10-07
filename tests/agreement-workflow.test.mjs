@@ -3,6 +3,9 @@ import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 import {createRequire} from "node:module";
 import ts from "typescript";
+import sharp from "sharp";
+
+const jpeg=await sharp({create:{width:40,height:30,channels:3,background:"#008eac"}}).jpeg().toBuffer();
 
 function load(file, dependencies = {}) {
   const url = new URL(file,import.meta.url);
@@ -13,7 +16,97 @@ function load(file, dependencies = {}) {
 }
 const policy = load("../lib/agreement-workflow.ts");
 const market = load("../lib/marketplace.ts");
+const photoPolicy = load("../lib/agreement-photos.ts");
 const base = {id:"VC-2099-ABCDEF123456",borrowerUid:"borrower",lenderUid:"owner",participantUids:["borrower","owner"],item:{id:"listing_123456789012345",name:"Trailer",dailyPrice:5000,category:"transport",country:"DK"},from:"2099-04-10",to:"2099-04-12",requestStatus:"requested",deposit:0,message:"Hej",handoverNote:"",returnNote:""};
+
+test("private photos require verified participant and an accepted two-account agreement",async()=>{
+  const s=setup();s.put("agreements/"+base.id,base);
+  assert.equal((await s.photoCall("POST","anonymous","handover",null,jpeg)).status,401);
+  assert.equal((await s.photoCall("POST","stranger","handover",null,jpeg)).status,403);
+  assert.equal((await s.photoCall("POST","borrower","handover",null,jpeg)).status,409);
+  assert.equal(s.images.size,0);
+  s.put("agreements/"+base.id,{...base,requestStatus:"accepted"});
+  const result=await s.photoCall("POST","borrower","handover",null,jpeg);
+  assert.equal(result.status,200);
+  const photo=(await result.json()).photos[0];
+  assert.equal(photo.uploadedBy,"borrower");assert.equal(photo.width,40);assert.equal(photo.height,30);
+  assert.equal(photo.src,undefined);assert.equal(photo.storagePath,undefined);
+  assert.equal((await s.photoCall("GET","stranger","handover",photo.id)).status,403);
+  const own=await s.photoCall("GET","owner","handover",photo.id);
+  assert.equal(own.status,200);assert.match(own.headers.get("cache-control"),/private, no-store/);
+  assert.equal(own.headers.get("content-type"),"image/jpeg");
+  assert.equal((await sharp(Buffer.from(await own.arrayBuffer())).metadata()).format,"jpeg");
+  assert.equal((await s.photoCall("GET","owner","return",photo.id)).status,404);
+  assert.equal((await s.photoCall("GET","owner","handover","../../users/owner")).status,400);
+});
+test("photo uploads validate decoded JPEG, maximum bytes/dimensions and two-photo limit",async()=>{
+  const s=setup();s.put("agreements/"+base.id,{...base,requestStatus:"accepted"});
+  assert.equal((await s.photoCall("POST","borrower","handover",null,Buffer.from("not a jpeg"))).status,400);
+  assert.equal((await s.photoCall("POST","borrower","handover",null,jpeg,{"content-type":"text/html"})).status,415);
+  assert.equal((await s.photoCall("POST","borrower","handover",null,Buffer.alloc(900*1024+1))).status,413);
+  const wide=await sharp({create:{width:1601,height:2,channels:3,background:"white"}}).jpeg().toBuffer();
+  assert.equal((await s.photoCall("POST","borrower","handover",null,wide)).status,400);
+  for(const uid of ["borrower","owner"]) assert.equal((await s.photoCall("POST",uid,"handover",null,jpeg)).status,200);
+  assert.equal((await s.photoCall("POST","borrower","handover",null,jpeg)).status,409);
+  assert.equal(s.images.size,2);
+});
+test("signature binds reviewed photo IDs and first signature locks both parties' photos",async()=>{
+  const s=setup();s.put("agreements/"+base.id,{...base,requestStatus:"accepted"});
+  const photo=(await (await s.photoCall("POST","borrower","handover",null,jpeg)).json()).photos[0];
+  const sign={id:base.id,action:"signature",role:"borrower",signature:{dataUrl:"data:image/png;base64,AAA",signedAt:new Date().toISOString()},seenNote:""};
+  assert.equal((await s.call("PATCH","borrower",sign)).status,409);
+  assert.equal((await s.call("PATCH","borrower",{...sign,seenPhotoIds:[]})).status,409);
+  assert.equal((await s.call("PATCH","borrower",{...sign,seenPhotoIds:["old-id"]})).status,409);
+  assert.equal((await s.call("PATCH","borrower",{...sign,seenPhotoIds:[photo.id]})).status,200);
+  assert.deepEqual(s.value("agreements/"+base.id).borrowerSignature.photoIds,[photo.id]);
+  assert.equal((await s.photoCall("DELETE","borrower","handover",photo.id)).status,409);
+  assert.equal((await s.photoCall("POST","owner","handover",null,jpeg)).status,409);
+  assert.equal((await s.call("PATCH","owner",{...sign,role:"lender",seenPhotoIds:[photo.id]})).status,200);
+  assert.equal(s.images.size,1);
+});
+test("only uploader can remove unsigned evidence and detached files cannot be read",async()=>{
+  const s=setup();s.put("agreements/"+base.id,{...base,requestStatus:"accepted"});
+  const photo=(await (await s.photoCall("POST","borrower","handover",null,jpeg)).json()).photos[0];
+  assert.equal((await s.photoCall("DELETE","owner","handover",photo.id)).status,403);
+  assert.equal((await s.photoCall("DELETE","borrower","handover",photo.id)).status,200);
+  assert.equal(s.images.size,0);
+  assert.deepEqual(s.value("agreements/"+base.id).handoverPhotos,[]);
+  assert.equal((await s.photoCall("GET","owner","handover",photo.id)).status,404);
+});
+test("return photos open after both handover signatures and lock at first return signature",async()=>{
+  const s=setup();s.put("agreements/"+base.id,{...base,requestStatus:"accepted",borrowerSignature:{}});
+  assert.equal((await s.photoCall("POST","owner","return",null,jpeg)).status,409);
+  s.put("agreements/"+base.id,{...base,requestStatus:"accepted",borrowerSignature:{},lenderSignature:{}});
+  const photo=(await (await s.photoCall("POST","owner","return",null,jpeg)).json()).photos[0];
+  const sign={id:base.id,action:"signature",role:"lender",phase:"return",signature:{dataUrl:"data:image/png;base64,AAA",signedAt:new Date().toISOString()},seenNote:"",seenPhotoIds:[photo.id]};
+  assert.equal((await s.call("PATCH","owner",sign)).status,200);
+  assert.equal((await s.photoCall("DELETE","owner","return",photo.id)).status,409);
+  assert.equal((await s.photoCall("POST","borrower","return",null,jpeg)).status,409);
+  assert.equal((await s.call("PATCH","borrower",{...sign,role:"borrower"})).status,200);
+  assert.equal((await s.photoCall("GET","borrower","return",photo.id)).status,200);
+});
+test("concurrent uploads preserve limit/version and clean losing upload",async()=>{
+  const s=setup();s.put("agreements/"+base.id,{...base,requestStatus:"accepted"});
+  await s.photoCall("POST","borrower","handover",null,jpeg);
+  const results=await Promise.all(["owner","borrower"].map(uid=>s.photoCall("POST",uid,"handover",null,jpeg)));
+  assert.deepEqual(results.map(r=>r.status).sort(),[200,409]);
+  assert.equal(s.value("agreements/"+base.id).handoverPhotos.length,2);
+  assert.equal(s.images.size,2);
+});
+test("racing photo upload and signature cannot create unreviewed signed evidence",async()=>{
+  const s=setup();s.put("agreements/"+base.id,{...base,requestStatus:"accepted"});
+  const sign={id:base.id,action:"signature",role:"borrower",signature:{dataUrl:"data:image/png;base64,AAA",signedAt:new Date().toISOString()},seenNote:"",seenPhotoIds:[]};
+  const results=await Promise.all([s.photoCall("POST","owner","handover",null,jpeg),s.call("PATCH","borrower",sign)]);
+  assert.deepEqual(results.map(r=>r.status).sort(),[200,409]);
+  const current=s.value("agreements/"+base.id);
+  assert.ok(!(current.borrowerSignature && current.handoverPhotos?.length));
+});
+test("expired evidence is inaccessible and cannot be changed",async()=>{
+  const s=setup();s.put("agreements/"+base.id,{...base,requestStatus:"accepted"});
+  const photo=(await (await s.photoCall("POST","owner","handover",null,jpeg)).json()).photos[0];
+  s.put("agreements/"+base.id,{...s.value("agreements/"+base.id),retentionUntil:"2000-01-01T00:00:00Z"});
+  for(const method of ["GET","DELETE","POST"]) assert.equal((await s.photoCall(method,"owner","handover",photo.id,method === "POST" ? jpeg : undefined)).status,410);
+});
 test("only owner accepts/declines, participants cancel only before signatures",()=>{
   assert.equal(policy.decisionAllowed(base,"owner","accept"),true);
   for(const uid of ["borrower","stranger"]) assert.equal(policy.decisionAllowed(base,uid,"accept"),false);
@@ -112,10 +205,19 @@ function setup() {
     }
     return docs.has(path) ? Response.json(structuredClone(docs.get(path))) : Response.json({},{status:404});
   };
-  const api=load("../app/api/agreements/route.ts",{"next/server":{NextResponse:{json:(data,options)=>Response.json(data,options)}},"@/lib/firebase-server":server,"@/lib/server-config":{serverConfig:()=>"test"},"@/lib/agreement-workflow":policy,"@/lib/marketplace":market});
+  const dependencies={"next/server":{NextResponse:{json:(data,options)=>Response.json(data,options)}},"@/lib/firebase-server":server,"@/lib/server-config":{serverConfig:()=>"test"},"@/lib/agreement-workflow":policy,"@/lib/marketplace":market,"@/lib/agreement-photos":photoPolicy};
+  const api=load("../app/api/agreements/route.ts",dependencies);
+  const images=new Map();
+  const photoApi=load("../app/api/agreements/photos/route.ts",{...dependencies,"@/lib/agreement-photo-storage":{
+    agreementPhotoPath:(id,phase,photoId)=>`${id}/${phase}/${photoId}`,
+    putAgreementPhoto:async(path,bytes)=>{images.set(path,bytes);},
+    readAgreementPhoto:async path=>images.has(path) ? new Blob([images.get(path)]).stream() : null,
+    deleteAgreementPhoto:async path=>{images.delete(path);},
+  }});
   put("listings/"+base.item.id,{ownerUid:"owner",active:true,...base.item});
   const call=(method,uid,body,query="")=>api[method](new Request("https://circle.test/api/agreements"+query,{method,headers:{authorization:uid,"content-type":"application/json"},...(body ? {body:JSON.stringify(body)} : {})}));
-  return {docs,put,value,call};
+  const photoCall=(method,uid,phase="handover",photoId,bytes,extra={})=>photoApi[method](new Request(`https://circle.test/api/agreements/photos?${new URLSearchParams({id:base.id,phase,...(photoId ? {photoId} : {})})}`,{method,headers:{authorization:uid,...(bytes ? {"content-type":"image/jpeg"} : {}),...extra},...(bytes ? {body:bytes} : {})}));
+  return {docs,put,value,call,photoCall,images};
 }
 test("new request derives parties, price and requested status on server",async()=>{
   const s=setup();

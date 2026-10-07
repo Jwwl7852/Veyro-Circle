@@ -61,12 +61,15 @@ export const noticeLabels: Record<"da"|"sv",Record<string,string>> = {
 };
 noticeLabels.da.pickupDue = "Den aftalte afhentningsdato er nået";
 noticeLabels.sv.pickupDue = "Det avtalade hämtningsdatumet har nåtts";
+noticeLabels.da.photos = "Aftalens billeder er opdateret";
+noticeLabels.sv.photos = "Avtalets bilder har uppdaterats";
 
 export function agreementErrorText(cause:unknown, lang:"da"|"sv") {
   const message = cause instanceof Error ? cause.message : "Aftalen kunne ikke opdateres.";
   if (lang === "da") return message;
   if (message.includes("booket")) return "Saken är redan bokad under en del av perioden. Välj andra datum.";
   if (message.includes("Noten er ændret")) return "Anteckningen har ändrats. Öppna avtalet igen, läs den och signera på nytt.";
+  if (message.includes("Billederne er ændret")) return "Bilderna har ändrats. Öppna avtalet igen, granska bilderna och signera på nytt.";
   if (message.includes("ændret samtidig")) return "Avtalet ändrades samtidigt. Uppdatera och försök igen.";
   if (message.includes("Ejeren skal godkende")) return "Ägaren måste godkänna förfrågan först.";
   if (message.includes("Perioden er udløbet")) return "Perioden har passerat. Be om en ny förfrågan.";

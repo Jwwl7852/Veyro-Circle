@@ -3,6 +3,7 @@ import { commitFirestoreWrites, firestoreDocumentName, firestoreDocumentUrl, get
 import { serverConfig } from "@/lib/server-config";
 import { agreementNotices, agreementStage, circleToday, decisionAllowed, overlaps, reservesDates, type Decision, type WorkflowAgreement } from "@/lib/agreement-workflow";
 import { dayCount } from "@/lib/marketplace";
+import { phasePhotos, photosSeen, type AgreementPhotos } from "@/lib/agreement-photos";
 
 type JsonValue = null | boolean | number | string | JsonValue[] | { [key:string]:JsonValue };
 type FirestoreValue = { nullValue?:null; booleanValue?:boolean; integerValue?:string; doubleValue?:number; stringValue?:string; timestampValue?:string; arrayValue?:{values?:FirestoreValue[]}; mapValue?:{fields?:Record<string,FirestoreValue>} };
@@ -113,7 +114,7 @@ export async function POST(request:Request) {
 export async function PATCH(request:Request) {
   try {
     const identity = await verifyFirebaseRequest(request);
-    const body = await request.json() as {id?:string;action?:"signature"|"note"|Decision|"read"|"message";role?:"borrower"|"lender";phase?:"handover"|"return";signature?:JsonValue;note?:string;seenNote?:string;noticeIds?:string[];text?:string;messageId?:string};
+    const body = await request.json() as {id?:string;action?:"signature"|"note"|Decision|"read"|"message";role?:"borrower"|"lender";phase?:"handover"|"return";signature?:JsonValue;note?:string;seenNote?:string;seenPhotoIds?:string[];noticeIds?:string[];text?:string;messageId?:string};
     if (!validId(body.id) || !["handover","return"].includes(body.phase ?? "handover")) return error("Aftaleopdateringen er ugyldig.");
     const documentResponse = await fetch(firestoreDocumentUrl(`agreements/${body.id}`), {cache:"no-store",headers:{authorization:`Bearer ${await serviceToken()}`}});
     if (!documentResponse.ok) return error("Aftalen findes ikke.",404);
@@ -187,6 +188,8 @@ export async function PATCH(request:Request) {
     if (!body.signature || !["borrower","lender"].includes(body.role ?? "")) return error("Underskriften er ugyldig.");
     const currentNote = String(data[phase === "return" ? "returnNote" : "handoverNote"] ?? "");
     if (body.seenNote !== currentNote) return error("Noten er ændret. Åbn aftalen igen, læs noten og underskriv på ny.",409);
+    const photos = phasePhotos(data as unknown as AgreementPhotos, phase);
+    if (!photosSeen(photos, body.seenPhotoIds)) return error("Billederne er ændret. Åbn aftalen igen, gennemgå billederne og underskriv på ny.",409);
     const signature = body.signature as Record<string,JsonValue>;
     if (typeof signature.dataUrl !== "string" || !signature.dataUrl.startsWith("data:image/png;base64,") || signature.dataUrl.length > 400_000 || typeof signature.signedAt !== "string" || !Number.isFinite(Date.parse(signature.signedAt))) return error("Underskriftsdata er ugyldige.");
     const expected = body.role === "borrower" ? data.borrowerUid : data.lenderUid;
@@ -195,7 +198,7 @@ export async function PATCH(request:Request) {
     if (data.returnedAt) return error("Returkvitteringen er allerede afsluttet.",409);
     const field = phase === "return" ? `${body.role}ReturnSignature` : `${body.role}Signature`;
     if (data[field]) return error("Denne underskrift er allerede registreret.",409);
-    const fields:Record<string,FirestoreValue> = {[field]:encode({dataUrl:signature.dataUrl,signedAt:now}),...activity(identity.localId,"signature",now)};
+    const fields:Record<string,FirestoreValue> = {[field]:encode({dataUrl:signature.dataUrl,signedAt:now,photoIds:photos.map(p=>p.id)}),...activity(identity.localId,"signature",now)};
     const otherReturnField = body.role === "borrower" ? "lenderReturnSignature" : "borrowerReturnSignature";
     const completedReturn = phase === "return" && Boolean(data[otherReturnField]);
     if (completedReturn) {
