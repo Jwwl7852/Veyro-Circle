@@ -167,7 +167,6 @@ export default function HomePage() {
     if(!user?.emailVerified) return;
     void import("@/lib/firebase-push").then(m=>m.maintainPush(user.uid,lang)).catch(()=>undefined);
   },[user?.uid,user?.emailVerified,lang]);
-  const [country, setCountry] = useState<"ALL" | "DK" | "SE">("ALL");
   const [category, setCategory] = useState("all");
   const [query, setQuery] = useState("");
   const [listings, setListings] = useState<Listing[]>([]);
@@ -337,14 +336,14 @@ export default function HomePage() {
     if (!origin && radius !== "all") return [];
     const q = query.trim().toLowerCase();
     return listings.map(item => ({ ...item, distance: origin ? distanceKm(origin, item.place) : NaN })).filter(item =>
-      item.publishable!==false && (country === "ALL" || item.country === country) &&
+      item.publishable!==false && 
       (category === "all" || item.category === category) &&
       (radius === "all" || item.distance <= Number(radius)) &&
       (priceFilter === "all" || (priceFilter === "free" ? item.dailyPrice === 0 : item.dailyPrice > 0)) &&
       (!onlyFavorites || prefs.favorites.includes(item.id)) &&
       (!q || `${item.name} ${item.city} ${item.description}`.toLowerCase().includes(q))
     ).sort((a,b) => origin ? a.distance - b.distance : a.id.localeCompare(b.id));
-  }, [category, country, listings, query, origin, radius, priceFilter,onlyFavorites,prefs.favorites]);
+  }, [category, listings, query, origin, radius, priceFilter,onlyFavorites,prefs.favorites]);
 
   const datesEntered=Boolean(searchFrom || searchTo);
   const searchDatesValid=validPeriod(searchFrom,searchTo,today);
@@ -371,16 +370,16 @@ export default function HomePage() {
     communityFetch("/api/preferences").then(p=>{if(active)setPrefs(p);}).catch(()=>undefined);
     return()=>{active=false;};
   },[user?.uid,user?.emailVerified]);
-  const savedFilter:SearchFilter={query,country,category,price:priceFilter,radius,placeId:origin?.id??""};
+  const savedFilter:SearchFilter={query,country:"ALL",category,price:priceFilter,radius,placeId:origin?.id??""};
   const savedMatches=prefs.searches.filter(s=>s.alerts).reduce((sum,s)=>sum+listings.filter(i=>!i.owned&&i.createdAt&&i.createdAt>s.seenThrough&&matchesSearch(s,i)).length,0);
   function openFavorites() {
     if (!user) { setAuthOpen(true); return; }
-    setQuery(""); setCountry("ALL"); setCategory("all"); setPriceFilter("all");
+    setQuery(""); setCategory("all"); setPriceFilter("all");
     setRadius("all"); setSearchFrom(""); setSearchTo("");
     setOnlyFavorites(true); setTab("home");
   }
   function openHome() { setOnlyFavorites(false); setTab("home"); }
-  function applySearch(filter:SearchFilter){setQuery(filter.query);setCountry(filter.country as "ALL"|"DK"|"SE");setCategory(filter.category);setPriceFilter(filter.price);setRadius(filter.radius);setOrigin(places.find(p=>p.id===filter.placeId)??null);setSearchFrom("");setSearchTo("");setOnlyFavorites(false);setTab("home");setNotificationsOpen(false);}
+  function applySearch(filter:SearchFilter){setQuery(filter.query);setCategory(filter.category);setPriceFilter(filter.price);setRadius(filter.radius);setOrigin(places.find(p=>p.id===filter.placeId)??null);setSearchFrom("");setSearchTo("");setOnlyFavorites(false);setTab("home");setNotificationsOpen(false);}
   async function favorite(item:Listing){if(!user){setAuthOpen(true);return;}setFavoriteBusy(item.id);try{setPrefs(await communityFetch("/api/preferences",{action:"favorite",id:item.id,enabled:!prefs.favorites.includes(item.id)}));}catch{toast.error(lang==="da"?"Favoritten kunne ikke gemmes. Prøv igen.":"Favoriten kunde inte sparas. Försök igen.");}finally{setFavoriteBusy(null);}}
   function navigate(next:Tab) {if(!user && next!=="home" && next!=="wanted"){setAuthOpen(true);return;}setTab(next);}
 
@@ -478,7 +477,7 @@ export default function HomePage() {
     try {
       const previous = editingId ? listings.find(item => item.id === editingId)?.photos ?? [] : [];
       await saveCircleListing(update, previous);
-      setOrigin(newPlace); setCountry("ALL"); setCategory("all"); setPriceFilter("all"); setQuery("");
+      setOrigin(newPlace); setCategory("all"); setPriceFilter("all"); setQuery("");
       setShowAdd(false); resetItemForm(); setTab("items");
       toast.success(editingId !== null
         ? (lang === "da" ? "Dine ændringer er gemt." : "Dina ändringar har sparats.")
@@ -734,11 +733,6 @@ export default function HomePage() {
               </div>
               <SavedSearches mode="save" lang={lang} prefs={prefs} filter={savedFilter} onChange={setPrefs} onApply={applySearch} items={listings} onLogin={user ? undefined : ()=>setAuthOpen(true)} />
             </section>
-            <div className="mt-4 flex flex-wrap items-center gap-2">
-              <button className={`country-pill ${country === "ALL" ? "active" : ""}`} onClick={() => setCountry("ALL")}><MapPin size={17} />{t.nearby}</button>
-              <button className={`country-pill ${country === "DK" ? "active" : ""}`} onClick={() => setCountry("DK")}><span>🇩🇰</span>{t.denmark}</button>
-              <button className={`country-pill ${country === "SE" ? "active" : ""}`} onClick={() => setCountry("SE")}><span>🇸🇪</span>{t.sweden}</button>
-            </div>
             <div className="category-strip scrollbar-none" role="list" aria-label="Kategorier">
               {categories.map((cat) => {
                 const Icon = cat.icon;
