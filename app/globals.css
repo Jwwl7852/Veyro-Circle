@@ -165,6 +165,10 @@ button:focus-visible,a:focus-visible { outline:3px solid #819eb6; outline-offset
 .community-map-card>header>span { display:inline-flex; flex:none; align-items:center; gap:.4rem; border-radius:999px; background:#e5f7f9; padding:.45rem .7rem; color:#006f88; font-size:.78rem; font-weight:800; }
 .community-map { position:relative; height:410px; overflow:hidden; border-block:1px solid var(--border); background:#dce8ec; cursor:grab; touch-action:none; user-select:none; }
 .community-map:active { cursor:grabbing; }
+.community-map:focus-visible { outline:3px solid var(--veyro-teal); outline-offset:-3px; }
+.community-map-wheel-help { padding:0 1.2rem .8rem; color:var(--veyro-muted); font-size:.8rem; line-height:1.5; }
+.map-page { min-width:0; }
+.map-page .community-map { height:clamp(330px,60svh,640px); }
 .community-map-tiles { position:absolute; inset:0; overflow:hidden; }
 .community-map-tile { position:absolute; width:256px; height:256px; background-position:center; background-repeat:no-repeat; background-size:256px 256px; }
 .community-radius { position:absolute; z-index:2; border:2px solid rgba(0,142,172,.75); border-radius:50%; background:rgba(22,200,213,.13); box-shadow:0 0 0 1px rgba(255,255,255,.75) inset; pointer-events:none; }

@@ -15,7 +15,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Bell, Bike, CalendarDays, Camera, Check, ChevronDown, CircleUserRound, Drill,
-  SprayCan, Heart, Home, ImagePlus, Languages, MapPin, MessageCircle,
+  SprayCan, Heart, Home, ImagePlus, Languages, MapPin, Map as MapIcon, MessageCircle,
   PackagePlus, PartyPopper, Pencil, Search, ShieldCheck, Sparkles, Star, TentTree,
   Trash2, Truck, Utensils, Wrench, X, Crown, FileSignature, Printer, LockKeyhole,
   LogOut, LoaderCircle, Send, Save,
@@ -32,7 +32,7 @@ import {
 } from "@/components/ui/alert-dialog";
 
 type Lang = "da" | "sv";
-type Tab = "home" | "items" | "requests" | "profile" | "subscription";
+type Tab = "home" | "map" | "items" | "requests" | "profile" | "subscription";
 type AgreementSignature = { dataUrl: string; signedAt: string };
 type Loan = { id: string; item: Listing; from: string; to: string; days: number; total: number; deposit: number; message: string; handoverNote?: string; returnNote?: string; borrower: Profile; borrowerUid?: string; lenderUid?: string; borrowerSignature?: AgreementSignature; lenderSignature?: AgreementSignature; borrowerReturnSignature?: AgreementSignature; lenderReturnSignature?: AgreementSignature; returnedAt?: string; returnCondition?: "good" | "remarks"; saved?: boolean };
 type Listing = {
@@ -455,6 +455,7 @@ export default function HomePage() {
           <div className="sticky top-24 space-y-6">
             <nav className="space-y-1" aria-label="Hovedmenu">
               <SideNav icon={Home} label={t.navHome} active={tab === "home"} onClick={() => setTab("home")} />
+              <SideNav icon={MapIcon} label={lang === "da" ? "Kort" : "Karta"} active={tab === "map"} onClick={() => setTab("map")} />
               <SideNav icon={ImagePlus} label={t.navItems} active={tab === "items"} onClick={() => setTab("items")} />
               <SideNav icon={CalendarDays} label={t.navRequests} active={tab === "requests"} badge={requestSent ? "1" : undefined} onClick={() => setTab("requests")} />
               <SideNav icon={CircleUserRound} label={t.navProfile} active={tab === "profile"} onClick={() => setTab("profile")} />
@@ -515,7 +516,6 @@ export default function HomePage() {
                 {profile && <button onClick={()=>setOrigin(profile.place)}>{lang === "da" ? "Brug min by" : "Använd min ort"}</button>}
               </div>
             </section>
-            {origin && <CommunityMap origin={origin} radiusKm={radius === "all" ? null : Number(radius)} lang={lang} />}
             <div className="mt-4 flex flex-wrap items-center gap-2">
               <button className={`country-pill ${country === "ALL" ? "active" : ""}`} onClick={() => setCountry("ALL")}><MapPin size={17} />{t.nearby}</button>
               <button className={`country-pill ${country === "DK" ? "active" : ""}`} onClick={() => setCountry("DK")}><span>🇩🇰</span>{t.denmark}</button>
@@ -536,6 +536,7 @@ export default function HomePage() {
               <div className="rounded-xl border border-dashed border-[#cbd0dd] bg-white px-6 py-16 text-center"><Search className="mx-auto mb-4 text-[#85899b]" size={34} /><p className="font-bold">{t.noResults}</p></div>}
           </>}
 
+          {tab === "map" && <div className="map-page"><header><p className="eyebrow">Veyro Circle</p><h1 className="page-title">{lang === "da" ? "Kort" : "Karta"}</h1></header>{profile ? <CommunityMap origin={profile.place} radiusKm={100} lang={lang} /> : <div className="content-panel"><p>{lang === "da" ? "Udfyld din profil for at se kortet med udgangspunkt i dit postnummer." : "Fyll i din profil för att se kartan med utgångspunkt i ditt postnummer."}</p><Button className="mt-4" onClick={()=>setTab("profile")}>{lang === "da" ? "Gå til konto" : "Gå till konto"}</Button></div>}</div>}
           {tab === "items" && <ItemsView lang={lang} profile={profile} listings={listings.filter(item => item.owned)} plan={listingPlan} onAdd={openAdd} onEdit={openEdit} onDelete={setPendingDelete} />}
           {tab === "requests" && <RequestsView t={t} loans={loans} lang={lang} loadError={agreementsError} onChat={setChatLoan} onAgreement={openAgreement} />}
           {tab === "profile" && <ProfileView lang={lang} profile={profile} authenticatedEmail={user?.email || undefined} onSave={saveProfile}
@@ -569,6 +570,7 @@ export default function HomePage() {
       </footer>
       <nav className="mobile-nav" aria-label="Mobilmenu">
         <MobileNav icon={Home} label={t.navHome} active={tab === "home"} onClick={() => setTab("home")} />
+        <MobileNav icon={MapIcon} label={lang === "da" ? "Kort" : "Karta"} active={tab === "map"} onClick={() => setTab("map")} />
         <MobileNav icon={ImagePlus} label={t.navItems} active={tab === "items"} onClick={() => setTab("items")} />
         <button className="add-mobile" onClick={openAdd} aria-label={t.addItem}><PackagePlus size={25} /></button>
         <MobileNav icon={CalendarDays} label={t.navRequests} active={tab === "requests"} badge={requestSent} onClick={() => setTab("requests")} />

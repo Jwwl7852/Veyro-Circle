@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { LocateFixed, MapPin, Minus, Plus, UsersRound } from "lucide-react";
 import { loadCommunityMap, type CommunityMapPoint } from "@/lib/firebase-community";
 import type { Lang, Place } from "@/lib/marketplace";
+import { bindMapWheel } from "@/lib/map-wheel";
 
 const TILE_SIZE = 256;
 const MIN_ZOOM = 5;
@@ -70,6 +71,16 @@ function CommunityMapCanvas({origin,radiusKm,lang,points,loading,loadError}:Comm
   const [size,setSize] = useState<MapSize>({width:720,height:390});
   const [view,setView] = useState<MapView>({lat:origin.lat,lon:origin.lon,zoom:zoomForRadius(radiusKm)});
   const [selected,setSelected] = useState<Cluster|null>(null);
+  const [wheelActive,setWheelActive] = useState(false);
+
+  useEffect(()=>{
+    const node = containerRef.current;
+    if (!node) return;
+    return bindMapWheel(node, amount=>{
+      setView(current=>({...current,zoom:Math.max(MIN_ZOOM,Math.min(MAX_ZOOM,current.zoom+amount))}));
+      setSelected(null);
+    },setWheelActive);
+  },[]);
 
   useEffect(()=>{
     const node = containerRef.current;
@@ -156,7 +167,8 @@ function CommunityMapCanvas({origin,radiusKm,lang,points,loading,loadError}:Comm
 
   return <section className="community-map-card" aria-labelledby="community-map-title">
     <header><div><p className="eyebrow">Veyro Circle</p><h2 id="community-map-title">{da ? "Circle-brugere i nærheden" : "Circle-användare i närheten"}</h2><p>{da ? `Kortet starter ${radiusKm ?? "uden fast afstand"} ${radiusKm===null?"":"km"} fra ${origin.postcode} ${origin.city}. Zoom eller træk kortet for at se andre områder.` : `Kartan startar ${radiusKm ?? "utan fast avstånd"} ${radiusKm===null?"":"km"} från ${origin.postcode} ${origin.city}. Zooma eller dra kartan för att se andra områden.`}</p></div><span><UsersRound size={18}/>{points.reduce((sum,point)=>sum+point.count,0)} {da ? "registrerede" : "registrerade"}</span></header>
-    <div ref={containerRef} className="community-map" role="application" aria-label={da ? "Interaktivt kort over registrerede Circle-brugere" : "Interaktiv karta över registrerade Circle-användare"} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={pointerUp} onWheel={event=>{event.preventDefault();changeZoom(event.deltaY<0?1:-1);}}>
+    <p id="map-wheel-help" className="community-map-wheel-help" aria-live="polite">{wheelActive ? (da ? "Kortet er aktivt: Rul for at zoome. Klik udenfor kortet eller tryk Esc for at rulle siden igen." : "Kartan är aktiv: Rulla för att zooma. Klicka utanför kartan eller tryck Esc för att rulla sidan igen.") : (da ? "Klik i kortet for at zoome med musehjulet. Du kan også bruge + og −. Med tastatur: Tryk Enter i kortet." : "Klicka i kartan för att zooma med mushjulet. Du kan också använda + och −. Med tangentbord: Tryck Enter i kartan.")}</p>
+    <div ref={containerRef} className="community-map" role="group" tabIndex={0} aria-describedby="map-wheel-help" aria-label={da ? "Interaktivt kort over registrerede Circle-brugere" : "Interaktiv karta över registrerade Circle-användare"} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={pointerUp}>
       <div className="community-map-tiles" aria-hidden="true">{tiles.map(tile=><div key={tile.key} className="community-map-tile" style={{left:tile.left,top:tile.top,backgroundImage:`url(${tile.url})`}} />)}</div>
       {radiusKm!==null && radiusPixels>4 && <div className="community-radius" aria-hidden="true" style={{left:originScreen.x-radiusPixels,top:originScreen.y-radiusPixels,width:radiusPixels*2,height:radiusPixels*2}} />}
       <div className="community-home-marker" style={{left:originScreen.x,top:originScreen.y}} title={`${origin.postcode} ${origin.city}`}><MapPin size={20}/></div>
