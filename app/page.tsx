@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { PushSettings } from "@/components/push-settings";
 import { CircleAuthScreen, EmailVerificationScreen, FirebaseSetupNotice, circleSignOut, useCircleAuth } from "@/components/circle-auth";
 import { loadCircleProfile, saveCircleProfile } from "@/lib/firebase-profile";
 import { agreementsChanged, loadBookedPeriods, loadCircleAgreements, saveCircleAgreement, saveCircleAgreementNote, saveCircleSignature, updateCircleAgreement, type SignaturePhase, type StoredAgreement } from "@/lib/firebase-agreements";
@@ -128,6 +129,10 @@ export default function HomePage() {
   const { user, loading: authLoading, configured } = useCircleAuth();
   const [lang, setLang] = useState<Lang>("da");
   const [tab, setTab] = useState<Tab>("home");
+  useEffect(()=>{
+    if(!user?.emailVerified) return;
+    void import("@/lib/firebase-push").then(m=>m.maintainPush(user.uid,lang)).catch(()=>undefined);
+  },[user?.uid,user?.emailVerified,lang]);
   const [country, setCountry] = useState<"ALL" | "DK" | "SE">("ALL");
   const [category, setCategory] = useState("all");
   const [query, setQuery] = useState("");
@@ -251,6 +256,16 @@ export default function HomePage() {
         const next = records.map(agreementFromCloud);
         setAgreementsError(false); setLoans(next); setToday(circleToday());
         setAgreementLoan(current=>current ? next.find(item=>item.id === current.id) ?? null : null);
+        const params=new URLSearchParams(window.location.search);
+        const ticket=params.get("ticket");
+        const target=next.find(item=>item.id === ticket);
+        if(target && params.has("push")) {
+          setTab("requests");setLoanDirection(target.lenderUid === user.uid ? "lender" : "borrower");setLoanArchive(isArchived(target));
+          if(params.get("push") === "message") setChatLoan(target);
+          else if(agreementStage(target) !== "requested") setAgreementLoan(target);
+          params.delete("ticket");params.delete("push");
+          window.history.replaceState(null,"",window.location.pathname+(params.size ? "?"+params.toString() : ""));
+        }
       } catch { if (active) setAgreementsError(true); }
       finally {
         loading = false;
@@ -727,6 +742,7 @@ export default function HomePage() {
       <Dialog open={notificationsOpen} onOpenChange={setNotificationsOpen}>
         <DialogContent className="notification-dialog">
           <DialogHeader><DialogTitle>{lang === "da" ? "Notifikationer" : "Aviseringar"}</DialogTitle><DialogDescription>{lang === "da" ? "Seneste aktivitet pr. aftale og dine påmindelser. Opdateres hvert 15. sekund, mens Circle er åbent." : "Senaste aktivitet per avtal och dina påminnelser. Uppdateras var 15:e sekund när Circle är öppet."}</DialogDescription></DialogHeader>
+          {user && <PushSettings uid={user.uid} lang={lang} />}
           {agreementsError && <p role="alert">{lang === "da" ? "Notifikationerne kunne ikke opdateres." : "Aviseringarna kunde inte uppdateras."} <button onClick={agreementsChanged}>{lang === "da" ? "Prøv igen" : "Försök igen"}</button></p>}
           {agreementsLoading && <p role="status">{lang === "da" ? "Henter…" : "Hämtar…"}</p>}
           {!agreementsLoading && !agreementsError && !notices.length && <p>{lang === "da" ? "Ingen notifikationer endnu." : "Inga aviseringar ännu."}</p>}

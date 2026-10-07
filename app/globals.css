@@ -633,3 +633,7 @@ button:focus-visible,a:focus-visible { outline:3px solid #819eb6; outline-offset
   .paper-signature-line { padding-top:17mm; }
   .agreement-legal { margin-top:3mm; padding:2.5mm; break-inside:avoid; }
 }
+
+.push-settings { border:1px solid var(--border); padding:1rem; border-radius:8px; font-size:1rem; overflow-wrap:anywhere; }
+.push-settings p { margin:.6rem 0; line-height:1.5; }
+.push-settings button { min-height:44px; padding:.65rem 1rem; background:#008eac; color:white; border-radius:6px; }

@@ -25,6 +25,9 @@ service cloud.firestore {
       allow read, write: if false;
     }
     // Atomic booking approvals use a server-only version lock per listing.
+    match /pushDevices/{deviceId} {
+      allow read, write: if false;
+    }
     match /bookingLocks/{listingId} {
       allow read, write: if false;
     }
