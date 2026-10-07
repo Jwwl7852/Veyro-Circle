@@ -797,7 +797,6 @@ export default function HomePage() {
           <div className="listing-dialog-body">
             <DialogHeader className="text-left"><DialogTitle className="text-2xl font-bold tracking-tight">{selected.name}</DialogTitle><DialogDescription className="flex flex-wrap items-center gap-3"><span className="flex items-center gap-1"><MapPin size={15} />{selected.city} · {Number.isFinite(selected.distance) ? `ca. ${selected.distance.toLocaleString(lang === "da" ? "da-DK" : "sv-SE", {maximumFractionDigits: 1})} km` : ""}</span></DialogDescription></DialogHeader>
             <p className="mt-5 leading-7 text-[#575b6e]">{selected.description}</p>
-            <ListingReviews key={selected.id+"reviews"} id={selected.id} lang={lang} />
             <ListingCalendar key={selected.id} id={selected.id} lang={lang} from={searchFrom} to={searchTo} onRange={(f,t)=>{setSearchFrom(f);setSearchTo(t);}} />
             {searchDays && <p className="period-price">{lang === "da" ? "Pris for perioden" : "Pris för perioden"}: <strong>{money(selected.dailyPrice*searchDays,selected.country,lang)}</strong> · {searchDays} {lang === "da" ? "kalenderdage" : "kalenderdagar"}</p>}
             <dl className="listing-specs">{(detailFields[selected.category]??[]).filter(f=>selected.details?.[f.key]).map(f=><div key={f.key}><dt>{f[lang]}</dt><dd>{selected.details![f.key]}</dd></div>)}</dl>
@@ -808,6 +807,7 @@ export default function HomePage() {
               <Button variant="outline" className="h-13 rounded-xl" onClick={() => openEdit(selected)}><Pencil size={17} />{lang === "da" ? "Rediger" : "Redigera"}</Button>
               <Button variant="outline" className="h-13 rounded-xl border-[#d9aaaa] text-[#9c3030] hover:bg-[#fff1f1] hover:text-[#842424]" onClick={() => setPendingDelete(selected)}><Trash2 size={17} />{lang === "da" ? "Slet" : "Ta bort"}</Button>
             </div> : <div className="listing-dialog-action"><Button className="mt-7 h-13 w-full rounded-xl bg-[#008EAC] text-base font-semibold text-white hover:bg-[#006F88]" onClick={openRequest}>{selected.dailyPrice > 0 ? (lang === "da" ? "Spørg om at leje" : "Fråga om att hyra") : t.borrow}</Button></div>}
+            <ListingReviews key={selected.id+"reviews"} id={selected.id} lang={lang} />
           </div>
         </DialogContent>}
       </Dialog>
@@ -855,7 +855,7 @@ export default function HomePage() {
         {agreementLoan && <DialogContent className="agreement-dialog max-h-[94vh] overflow-y-auto rounded-xl sm:max-w-[760px]">
           <AgreementJourney agreement={agreementLoan} uid={user?.uid ?? ""} lang={lang} names={{borrower:agreementLoan.borrower.name,lender:agreementLoan.item.owner}} onContinue={phase=>{const section=document.getElementById(`agreement-${phase}-section`);section?.scrollIntoView({block:"start",behavior:"instant"});section?.focus({preventScroll:true});}} />
           <div className="agreement-account-help no-print"><p>{lang === "da" ? "Begge underskriver fra hver sin konto. Åbn samme ticket under Mine lån → Jeg låner / Jeg udlåner." : "Båda signerar från varsitt konto. Öppna samma ticket under Mina lån → Jag lånar / Jag lånar ut."}<br/>{lang === "da" ? "Du er logget ind som" : "Du är inloggad som"}: <b>{user?.email}</b></p><Button variant="outline" onClick={agreementsChanged}><RefreshCw size={16}/>{lang === "da" ? "Opdatér aftalen" : "Uppdatera avtalet"}</Button></div>
-          {agreementStage(agreementLoan)==="returned" && <ReviewForm key={agreementLoan.id} id={agreementLoan.id} lang={lang} />}
+          {agreementStage(agreementLoan)==="returned" && <ReviewForm key={agreementLoan.id} id={agreementLoan.id} lang={lang} target={user?.uid===agreementLoan.borrowerUid?"lender":"borrower"} />}
           {["accepted","handedOver"].includes(agreementStage(agreementLoan)) && !agreementLoan.borrowerReturnSignature && !agreementLoan.lenderReturnSignature && <AgreementExtension key={agreementLoan.id} loan={agreementLoan} uid={user?.uid??""} lang={lang} />}
           <div className="print-agreement">
             <p className="agreement-lifecycle-status">{stageLabels[lang][agreementStage(agreementLoan)]}</p>
