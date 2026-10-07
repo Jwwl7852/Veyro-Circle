@@ -205,7 +205,8 @@ function setup() {
     }
     return docs.has(path) ? Response.json(structuredClone(docs.get(path))) : Response.json({},{status:404});
   };
-  const dependencies={"next/server":{NextResponse:{json:(data,options)=>Response.json(data,options)}},"@/lib/firebase-server":server,"@/lib/server-config":{serverConfig:()=>"test"},"@/lib/agreement-workflow":policy,"@/lib/marketplace":market,"@/lib/agreement-photos":photoPolicy};
+  const pushes=[];
+  const dependencies={"@/lib/push-server":{sendCirclePush:async(...args)=>pushes.push(args)},"next/server":{after:fn=>fn(),NextResponse:{json:(data,options)=>Response.json(data,options)}},"@/lib/firebase-server":server,"@/lib/server-config":{serverConfig:()=>"test"},"@/lib/agreement-workflow":policy,"@/lib/marketplace":market,"@/lib/agreement-photos":photoPolicy};
   const api=load("../app/api/agreements/route.ts",dependencies);
   const listingApi=load("../app/api/listings/route.ts",dependencies);
   const images=new Map();
@@ -219,7 +220,7 @@ function setup() {
   const call=(method,uid,body,query="")=>api[method](new Request("https://circle.test/api/agreements"+query,{method,headers:{authorization:uid,"content-type":"application/json"},...(body ? {body:JSON.stringify(body)} : {})}));
   const photoCall=(method,uid,phase="handover",photoId,bytes,extra={})=>photoApi[method](new Request(`https://circle.test/api/agreements/photos?${new URLSearchParams({id:base.id,phase,...(photoId ? {photoId} : {})})}`,{method,headers:{authorization:uid,...(bytes ? {"content-type":"image/jpeg"} : {}),...extra},...(bytes ? {body:bytes} : {})}));
   const listingCall=(uid,listing)=>listingApi.POST(new Request("https://circle.test/api/listings",{method:"POST",headers:{authorization:uid,"content-type":"application/json"},body:JSON.stringify({listing})}));
-  return {docs,put,value,call,photoCall,images,listingCall};
+  return {docs,put,value,call,photoCall,images,listingCall,pushes};
 }
 test("only listing owner sets deposit; old clients preserve it and invalid amounts fail",async()=>{
   const s=setup();
@@ -356,4 +357,17 @@ test("declining moves the request into the archive and refuses later approval",a
   assert.equal((await s.call("PATCH","owner",{id:base.id,action:"decline"})).status,200);
   assert.equal(policy.isArchived(s.value("agreements/"+base.id)),true);
   assert.equal((await s.call("PATCH","owner",{id:base.id,action:"accept"})).status,403);
+});
+
+test("push goes only to the counterpart after saved requests/messages, retries do not duplicate",async()=>{
+  const s=setup();
+  assert.equal((await s.call("POST","borrower",{agreement:base})).status,200);
+  assert.deepEqual(s.pushes,[["owner","requested",base.id]]);
+  await s.call("POST","borrower",{agreement:base});assert.equal(s.pushes.length,1);
+  const body={id:base.id,action:"message",text:"Hej",messageId:"message-123456"};
+  assert.equal((await s.call("PATCH","borrower",body)).status,200);
+  assert.deepEqual(s.pushes[1],["owner","message",base.id]);
+  await s.call("PATCH","borrower",body);assert.equal(s.pushes.length,2);
+  assert.equal((await s.call("PATCH","stranger",{...body,messageId:"other-message"})).status,403);
+  assert.equal(s.pushes.length,2);
 });

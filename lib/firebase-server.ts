@@ -10,7 +10,7 @@ function b64url(value: string | Uint8Array) {
   return btoa(binary).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
 }
 
-export async function serviceToken(scope: "datastore" | "storage" = "datastore") {
+export async function serviceToken(scope: "datastore" | "storage" | "messaging" = "datastore") {
   const cachedToken = cachedTokens.get(scope);
   if (cachedToken && cachedToken.expiresAt > Date.now() + 60_000) return cachedToken.value;
   const email = serverConfig("FIREBASE_SERVICE_ACCOUNT_EMAIL");
@@ -27,7 +27,7 @@ export async function serviceToken(scope: "datastore" | "storage" = "datastore")
   const key = await crypto.subtle.importKey("pkcs8", der, { name:"RSASSA-PKCS1-v1_5", hash:"SHA-256" }, false, ["sign"]);
   const now = Math.floor(Date.now() / 1000);
   const header = b64url(JSON.stringify({ alg:"RS256", typ:"JWT" }));
-  const claims = b64url(JSON.stringify({ iss:email, sub:email, aud:"https://oauth2.googleapis.com/token", iat:now, exp:now + 3600, scope:scope === "storage" ? "https://www.googleapis.com/auth/devstorage.read_write" : "https://www.googleapis.com/auth/datastore" }));
+  const claims = b64url(JSON.stringify({ iss:email, sub:email, aud:"https://oauth2.googleapis.com/token", iat:now, exp:now + 3600, scope:scope === "messaging" ? "https://www.googleapis.com/auth/firebase.messaging" : scope === "storage" ? "https://www.googleapis.com/auth/devstorage.read_write" : "https://www.googleapis.com/auth/datastore" }));
   const unsigned = `${header}.${claims}`;
   const signature = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, new TextEncoder().encode(unsigned));
   const body = new URLSearchParams({ grant_type:"urn:ietf:params:oauth:grant-type:jwt-bearer", assertion:`${unsigned}.${b64url(new Uint8Array(signature))}` });

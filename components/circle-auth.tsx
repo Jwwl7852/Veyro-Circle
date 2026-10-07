@@ -45,6 +45,8 @@ export function useCircleAuth() {
 }
 
 export async function circleSignOut() {
+  const { disablePush } = await import("@/lib/firebase-push");
+  await disablePush();
   if (auth) await signOut(auth);
 }
 

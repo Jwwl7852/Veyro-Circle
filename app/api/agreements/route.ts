@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+import { sendCirclePush } from "@/lib/push-server";
+import { NextResponse, after } from "next/server";
 import { commitFirestoreWrites, firestoreDocumentName, firestoreDocumentUrl, getFirestoreDocument, getServerProfile, serviceToken, verifyFirebaseRequest } from "@/lib/firebase-server";
 import { serverConfig } from "@/lib/server-config";
 import { agreementNotices, agreementStage, circleToday, decisionAllowed, overlaps, reservesDates, type Decision, type WorkflowAgreement } from "@/lib/agreement-workflow";
@@ -110,6 +111,7 @@ export async function POST(request:Request) {
     const response = await fetch(`${firestoreDocumentUrl(`agreements/${agreement.id}`)}?currentDocument.exists=false`, {method:"PATCH",headers:{authorization:`Bearer ${await serviceToken()}`,"content-type":"application/json"},body:JSON.stringify({fields})});
     if (response.status === 409 || response.status === 412) return error("Aftalen er allerede gemt og kan ikke overskrives.",409);
     if (!response.ok) throw new Error("Aftalen kunne ikke gemmes i Firebase.");
+    after(()=>sendCirclePush(ownerUid,"requested",String(agreement.id)));
     return NextResponse.json({ok:true,agreement:Object.fromEntries(Object.entries(fields).map(([key,value])=>[key,decode(value)]))},{headers:responseHeaders});
   } catch (cause) { return error(cause instanceof Error ? cause.message : "Aftalen kunne ikke gemmes.",500); }
 }
@@ -147,6 +149,8 @@ export async function PATCH(request:Request) {
         {update:{name:firestoreDocumentName(path),fields:{senderUid:{stringValue:identity.localId},text:{stringValue:text},createdAt:{timestampValue:now}}},currentDocument:{exists:false}},
         updateWrite(body.id,activity(identity.localId,"message",now),document.updateTime),
       ]);
+      const recipient=participants.find(uid=>typeof uid === "string" && uid !== identity.localId);
+      if (typeof recipient === "string") { const ticket=body.id; after(()=>sendCirclePush(recipient,"message",ticket)); }
       return NextResponse.json({ok:true});
     }
     if (body.action && ["accept","decline","cancel"].includes(body.action)) {
