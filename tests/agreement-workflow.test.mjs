@@ -419,13 +419,13 @@ test("reviews require completed loan, actual participant and one review per part
   assert.equal((await send("stranger")).status,403);
   assert.equal((await send("borrower")).status,409);
   s.put("agreements/"+base.id,{...base,returnedAt:new Date().toISOString(),borrowerSignature:{},lenderSignature:{},borrowerReturnSignature:{},lenderReturnSignature:{}});
-  assert.equal((await send("borrower",{stars:6})).status,400);
-  assert.equal((await send("borrower",{subjectUid:"stranger",author:"Fake"})).status,200);
+  assert.equal((await send("borrower",{stars:7})).status,400);
+  assert.equal((await send("borrower",{stars:6,subjectUid:"stranger",author:"Fake"})).status,200);
   assert.equal((await send("borrower")).status,409);
   assert.equal((await send("owner")).status,200);
   const record=s.value(`reviews/${base.id}_borrower`);assert.equal(record.subjectUid,"owner");assert.equal(record.author,"Real");
   const publicData=await (await s.communityCall("reviews","GET",null,null,"?listingId="+base.item.id)).json();
-  assert.equal(publicData.count,1);assert.equal(publicData.average,4);
+  assert.equal(publicData.count,1);assert.equal(publicData.average,6);assert.equal(publicData.reviews[0].maxStars,6);
   assert.equal(publicData.reviews[0].authorUid,undefined);assert.equal(publicData.reviews[0].agreementId,undefined);
   const own=await (await s.communityCall("reviews","GET","owner",null,"?agreementId="+base.id)).json();assert.equal(own.reviews.length,2);assert.equal(own.reviewed,true);
   assert.equal((await s.communityCall("reviews","GET","stranger",null,"?agreementId="+base.id)).status,403);
@@ -562,4 +562,13 @@ test("public feed pauses unpaid listings without deleting owners' items or expos
   s.put("users/owner",{subscriptionPlan:"plus",street:"Private",phone:"123"});
   const publicItems=await read(null);assert.equal(publicItems.length,1);assert.equal(publicItems[0].publishable,true);assert.equal(publicItems[0].street,undefined);assert.equal(publicItems[0].phone,undefined);
   s.put("users/owner",{subscriptionPlan:"free"});assert.equal((await read("borrower")).length,0);assert.equal(s.docs.has("listings/"+base.item.id),true);
+});
+
+test("lender reviews span listings, retain legacy scale and exclude borrower ratings",async()=>{
+  const s=setup();s.put("agreements/legacy_review_123",{...base,lenderUid:"owner"});
+  s.put("reviews/old_review_123",{agreementId:"legacy_review_123",listingId:"another_listing_123",subjectUid:"owner",author:"A",stars:5,text:"Godt",createdAt:"2026-01-01"});
+  s.put("reviews/new_review_123",{subjectUid:"owner",subjectRole:"lender",author:"B",stars:6,maxStars:6,text:"Super",createdAt:"2026-10-01"});
+  s.put("reviews/borrower_review_123",{subjectUid:"owner",subjectRole:"borrower",author:"C",stars:1,maxStars:6,text:"Not a lender review",createdAt:"2026-10-01"});
+  const data=await (await s.communityCall("reviews","GET",null,null,"?listingId="+base.item.id)).json();
+  assert.equal(data.count,2);assert.equal(data.average,6);assert.deepEqual(data.reviews.map(r=>r.maxStars).sort(),[5,6]);
 });

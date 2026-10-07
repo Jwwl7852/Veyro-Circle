@@ -680,3 +680,9 @@ button:focus-visible,a:focus-visible { outline:3px solid #819eb6; outline-offset
 @media(max-width:639px) { .extra-panel { padding:.8rem; }.listing-specs { grid-template-columns:1fr; }.extra-panel button { max-width:100%; }.wanted-board { min-width:0; } }
 
 .discovery-toolbar button { display:flex; align-items:center; gap:.5rem; min-height:44px; padding:.65rem .85rem; color:#006f88; border:1px solid var(--border); background:white; border-radius:6px; }
+
+.review-star-buttons,.review-stars { display:flex; flex-wrap:wrap; gap:4px; color:#a66b00; }
+.extra-panel .review-star-buttons button { display:grid; place-items:center; width:44px; height:44px; padding:0; margin:0; color:#a66b00; border-color:transparent; }
+.extra-panel .review-star-buttons button[aria-pressed=true] { border-color:#008eac; background:#e6f7f9; }
+.review-star-buttons button:focus-visible { outline:2px solid #008eac; outline-offset:2px; }
+.lender-reviews { margin-top:2rem; background:white; }.lender-reviews article { padding:.8rem 0; }.lender-reviews article p { white-space:pre-wrap; }.review-stars { margin:.4rem 0; }
