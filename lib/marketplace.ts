@@ -44,6 +44,10 @@ export function parseDailyPrice(value: string): number | null {
   const amount = Number(value.trim().replace(",", "."));
   return Number.isFinite(amount) && amount > 0 && amount <= 100000 ? Math.round(amount * 100) : null;
 }
+export function parseDeposit(value:string):number|null {
+  const text=value.trim();
+  return !text || /^0+(?:[.,]0{1,2})?$/.test(text) ? 0 : parseDailyPrice(text);
+}
 export function money(minorUnits: number, country: Country, lang: Lang) {
   return new Intl.NumberFormat(lang === "da" ? "da-DK" : "sv-SE", {
     style: "currency", currency: country === "DK" ? "DKK" : "SEK", currencyDisplay: "code",

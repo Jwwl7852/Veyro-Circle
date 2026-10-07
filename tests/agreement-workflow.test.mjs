@@ -175,7 +175,7 @@ function setup() {
       docs.set(w.update.name,{name:w.update.name,fields:w.updateMask ? {...old.fields,...w.update.fields} : w.update.fields,updateTime:`version-${++version}`});
     }
   };
-  const profile={name:"Real person",email:"real@example.test",phone:"12345678",street:"Real Street 1",place:{id:"1",country:"DK",postcode:"4174",city:"Jystrup",lat:55,lon:12},subscriptionPlan:"plus",stripeCustomerId:"must-not-leak"};
+  const profile={name:"Real person",email:"real@example.test",phone:"12345678",street:"Real Street 1",country:"DK",place:{id:"1",country:"DK",postcode:"4174",city:"Jystrup",lat:55,lon:12},subscriptionPlan:"plus",stripeCustomerId:"must-not-leak"};
   const server={
     verifyFirebaseRequest:async request=>{const uid=request.headers.get("authorization");if(!["owner","borrower","stranger"].includes(uid))throw new Error("Du skal være logget ind");return {localId:uid};},
     getFirestoreDocument:async path=>structuredClone(docs.get(path) ?? null),
@@ -190,7 +190,7 @@ function setup() {
     if(url.pathname.endsWith(":runQuery")) {
       const f=body.structuredQuery.where.fieldFilter;
       const rows=[...docs.entries()].filter(([path,d])=>{
-        if(!/^agreements\/[^/]+$/.test(path)) return false;
+        if(path.split("/").length !== 2 || path.split("/")[0] !== body.structuredQuery.from[0].collectionId) return false;
         const data=decode({mapValue:{fields:d.fields}});
         const value=f.field.fieldPath.split(".").reduce((v,key)=>v?.[key],data);
         return f.op==="ARRAY_CONTAINS" ? value?.includes(f.value.stringValue) : value===f.value.stringValue;
@@ -207,6 +207,7 @@ function setup() {
   };
   const dependencies={"next/server":{NextResponse:{json:(data,options)=>Response.json(data,options)}},"@/lib/firebase-server":server,"@/lib/server-config":{serverConfig:()=>"test"},"@/lib/agreement-workflow":policy,"@/lib/marketplace":market,"@/lib/agreement-photos":photoPolicy};
   const api=load("../app/api/agreements/route.ts",dependencies);
+  const listingApi=load("../app/api/listings/route.ts",dependencies);
   const images=new Map();
   const photoApi=load("../app/api/agreements/photos/route.ts",{...dependencies,"@/lib/agreement-photo-storage":{
     agreementPhotoPath:(id,phase,photoId)=>`${id}/${phase}/${photoId}`,
@@ -217,8 +218,42 @@ function setup() {
   put("listings/"+base.item.id,{ownerUid:"owner",active:true,...base.item});
   const call=(method,uid,body,query="")=>api[method](new Request("https://circle.test/api/agreements"+query,{method,headers:{authorization:uid,"content-type":"application/json"},...(body ? {body:JSON.stringify(body)} : {})}));
   const photoCall=(method,uid,phase="handover",photoId,bytes,extra={})=>photoApi[method](new Request(`https://circle.test/api/agreements/photos?${new URLSearchParams({id:base.id,phase,...(photoId ? {photoId} : {})})}`,{method,headers:{authorization:uid,...(bytes ? {"content-type":"image/jpeg"} : {}),...extra},...(bytes ? {body:bytes} : {})}));
-  return {docs,put,value,call,photoCall,images};
+  const listingCall=(uid,listing)=>listingApi.POST(new Request("https://circle.test/api/listings",{method:"POST",headers:{authorization:uid,"content-type":"application/json"},body:JSON.stringify({listing})}));
+  return {docs,put,value,call,photoCall,images,listingCall};
 }
+test("only listing owner sets deposit; old clients preserve it and invalid amounts fail",async()=>{
+  const s=setup();
+  const draft={...base.item,description:"Trailer",place:{id:"1",country:"DK",city:"Jystrup",postcode:"4174"},photos:[],deposit:25000};
+  assert.equal((await s.listingCall("borrower",draft)).status,403);
+  assert.equal((await s.listingCall("owner",draft)).status,200);
+  assert.equal(s.value("listings/"+base.item.id).deposit,25000);
+  assert.equal((await s.listingCall("owner",{...draft,deposit:undefined})).status,200);
+  assert.equal(s.value("listings/"+base.item.id).deposit,25000);
+  for(const deposit of [-1,1.5,10000001,"100"]) assert.equal((await s.listingCall("owner",{...draft,deposit})).status,400);
+  assert.equal((await s.listingCall("owner",{...draft,deposit:0})).status,200);
+  assert.equal(s.value("listings/"+base.item.id).deposit,0);
+});
+test("agreement uses owner deposit; stale or forged terms fail and saved terms stay unchanged",async()=>{
+  const s=setup();s.put("listings/"+base.item.id,{...base.item,ownerUid:"owner",active:true,deposit:25000});
+  assert.equal((await s.call("POST","borrower",{agreement:base})).status,409);
+  const draft={...base,deposit:25000};
+  const response=await s.call("POST","borrower",{agreement:draft});
+  assert.equal(response.status,200);assert.equal((await response.json()).agreement.deposit,25000);
+  s.put("listings/"+base.item.id,{...base.item,ownerUid:"owner",active:true,deposit:90000});
+  const retry=await s.call("POST","borrower",{agreement:draft});
+  assert.equal(retry.status,200);assert.equal((await retry.json()).agreement.deposit,25000);
+  assert.equal(s.value("agreements/"+base.id).deposit,25000);
+});
+test("owner-first signatures support the second account at both handover and return",async()=>{
+  const s=setup();s.put("agreements/"+base.id,{...base,requestStatus:"accepted"});
+  for(const phase of ["handover","return"]) {
+    assert.equal((await s.call("PATCH","owner",{id:base.id,action:"note",phase,note:"Aftalt stand"})).status,200);
+    for(const [role,uid] of [["lender","owner"],["borrower","borrower"]]) {
+      assert.equal((await s.call("PATCH",uid,{id:base.id,action:"signature",phase,role,seenNote:"Aftalt stand",seenPhotoIds:[],signature:{dataUrl:"data:image/png;base64,AAA",signedAt:new Date().toISOString()}})).status,200);
+    }
+  }
+  assert.equal(policy.agreementStage(s.value("agreements/"+base.id)),"returned");
+});
 test("new request derives parties, price and requested status on server",async()=>{
   const s=setup();
   const res=await s.call("POST","borrower",{agreement:{...base,total:1,lenderUid:"stranger",participantUids:["stranger"],borrower:{name:"Fake"},borrowerSignature:{},requestStatus:"accepted",notificationReads:{owner:["forged"]}}});

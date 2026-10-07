@@ -2,6 +2,15 @@
 
 ## Adfærd
 
+### Tablet, depositum og anden underskrift
+
+- Login/registrering bruger normal viewport-bredde uden CSS-zoom/125 %-bredde. 640–899 px viser én kolonne; 900–1199 px har to fleksible kolonner; større tablets/desktop bruger begrænset indholdsbredde. Formularen kan rulle lodret ved liggende skærm og åbent tastatur. Inputs er mindst 16 px og knapper mindst 44 px.
+- Annoncegalleriet har én begrænset billedrække, `object-fit:contain` og maksimal højde efter viewport, også med to portrætbilleder. Forespørgselsdialogen åbnes uden annonce-dialogen bagved; datoer og tekst konkurrerer ikke med et stort billede.
+- Depositum fastsættes af ejeren under Tilføj/Rediger din ting (0 eller blankt = intet), både ved gratis udlån og betalt leje. Beløbet vises på kort, annonce og som læsbar opsummering i forespørgslen. API'et accepterer kun hele øre fra 0 til 10.000.000 og kun ændringer fra annonceejeren. Gamle annoncer uden felt har 0; en gammel klient, der udelader feltet ved redigering, bevarer eksisterende depositum.
+- Ny aftale kopierer depositum fra serverens annonce. Uoverensstemmelse mellem viste og aktuelle pris/depositum giver 409 og besked om at genåbne annoncen. Låner kan ikke fastsætte beløbet. Eksisterende aftaler og idempotente retries beholder deres oprindelige vilkår. Circle opkræver ikke depositum.
+- Begge parter underskriver fra **hver sin konto**. En urørt notekladde følger serverens opdateringer. Ved første underskrift anvendes altid den låste servernote, så en gammel kladde ikke skjuler den anden parts underskriftsfelt. Egne ugemte ændringer bevares før låsning. Manglende godkendelse, billeder, gemt note eller forkert konto forklares ved feltet. Aftalen viser login-kontoen og en opdateringsknap.
+- Automatiske tests dækker ejer-depositum, gamle klienter, manipuleret/stale forespørgsel, låste noter og begge underskriftsrækkefølger. Faktisk rotation/tastatur på iPad Safari og to fysiske konti skal stadig gennemprøves; HTML/CSS-tests erstatter ikke en enhedstest.
+
 - Send forespørgsel gemmer straks i Firestore til begge deltagere. Ticket genbruges ved retry fra samme åbne formular. Serveren henter identitet, ejer og pris fra egne dokumenter, ikke fra klientfelter.
 - Ejeren godkender eller afviser. Deltagere kan annullere indtil første udleveringsunderskrift. Afviste/annullerede dokumenter bevares i arkivet; en ny forespørgsel kræves for andre datoer/vilkår.
 - Godkendelse reserverer inklusive kalenderdage. To samtidige godkendelser for samme ting kan ikke begge gennemføres: API læser en `bookingLocks/{listingId}`-version før overlapforespørgslen og skriver lås og aftale atomisk med versionskontrol. Ved konflikt skal brugeren opdatere/prøve igen. Kun godkendte eller allerede underskrevne aftaler reserverer datoer.

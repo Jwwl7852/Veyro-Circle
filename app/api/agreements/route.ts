@@ -92,13 +92,16 @@ export async function POST(request:Request) {
     const listingData = Object.fromEntries(Object.entries(listing?.fields ?? {}).map(([key,value])=>[key,decode(value)]));
     const price = listingData.dailyPrice;
     if (typeof price !== "number" || !Number.isSafeInteger(price) || price < 0) return error("Annoncens pris er ugyldig.");
+    const deposit = listingData.deposit ?? 0;
+    if (typeof deposit !== "number" || !Number.isSafeInteger(deposit) || deposit < 0 || deposit > 10_000_000) return error("Annoncens depositum er ugyldigt.");
+    if (draft.deposit !== deposit || item.dailyPrice !== price) return error("Annoncens pris eller depositum er ændret. Luk forespørgslen og åbn annoncen igen.",409);
     // Only server-owned identity, price and status enter the saved agreement.
     const agreement:Record<string,JsonValue> = {
       id:draft.id, borrowerUid:identity.localId, lenderUid:ownerUid, participantUids:[identity.localId,ownerUid],
       borrower:{name:borrower.name,email:borrower.email,phone:borrower.phone,street:borrower.street,place:borrower.place},
       lender:{name:lender.name,phone:lender.phone,street:lender.street,place:lender.place},
       item:{id:item.id,name:listingData.name,category:listingData.category,country:listingData.country,dailyPrice:price},
-      from:draft.from,to:draft.to,days,total:price*days,deposit:draft.deposit,message:draft.message.trim(),
+      from:draft.from,to:draft.to,days,total:price*days,deposit,message:draft.message.trim(),
       handoverNote:"",returnNote:"",requestStatus:"requested",
     };
     const now = new Date(); const retention = new Date(now); retention.setMonth(retention.getMonth()+12);
@@ -186,6 +189,7 @@ export async function PATCH(request:Request) {
       return NextResponse.json({ok:true,note});
     }
     if (!body.signature || !["borrower","lender"].includes(body.role ?? "")) return error("Underskriften er ugyldig.");
+    if (!data.borrowerUid || !data.lenderUid || data.borrowerUid === data.lenderUid) return error("Aftalen skal være knyttet til to forskellige konti. Opret en ny forespørgsel på den rigtige annonce.",409);
     const currentNote = String(data[phase === "return" ? "returnNote" : "handoverNote"] ?? "");
     if (body.seenNote !== currentNote) return error("Noten er ændret. Åbn aftalen igen, læs noten og underskriv på ny.",409);
     const photos = phasePhotos(data as unknown as AgreementPhotos, phase);
