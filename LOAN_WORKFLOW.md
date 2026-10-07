@@ -12,6 +12,12 @@
 
 ## Notifikationer og drift
 
+### Tydeligt aftaleforløb
+
+Aftalevisningen viser fire trin: forespørgsel, udlevering, i brug og tilbagelevering. En personlig besked forklarer næste handling og navngiver den anden part, når dennes underskrift mangler. Genveje flytter tastaturfokus og visning til den relevante note. Forløbet medtages ikke i udskriften og ændrer ikke aftalens data eller underskriftsregler.
+
+Aftaler uden to forskellige tilknyttede UID'er markeres som ikke digitalt gennemførlige (mulig gammel prøveaftale), ikke som beviseligt demo. Afviste/annullerede og afsluttede aftaler får en afslutningsbesked. Før godkendelse forklarer udleveringsnoten korrekt, at ejerens godkendelse mangler, frem for at bede om underskrifter først. Mobilvisning bruger to trin pr. række; dansk/svensk, statusafledning og HTML-semantik testes automatisk.
+
 - Klokken viser seneste aktivitet pr. aftale plus påmindelser om udleveringsunderskrift, afhentningsdato og retur. Dette er ikke en komplet hændelseslog; en nyere aktivitet erstatter den tidligere aktivitetsnotifikation.
 - Læst-status gemmes pr. UID i aftalen. En læsekvittering gælder kun det viste notifikations-ID, ikke en nyere hændelse. Klienten kan ikke vælge modtager, afsender eller ændre en anden brugers læst-status.
 - Nye chatbeskeder og aktivitetsmarkering gemmes atomisk gennem API'et. Den eksisterende chatvisning modtager stadig beskeder via Firestore-listener. Gamle klienter, der skriver direkte via de eksisterende chatregler, skaber ikke nye aktivitetsmarkeringer; genindlæs appen efter deploy.

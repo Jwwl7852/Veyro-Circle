@@ -177,3 +177,19 @@ test("map and loans omit visible page titles but retain accessible headings",asy
     assert.match(html,/class="loan-retention"/);
   }
 });
+
+test("agreement journey is accessible, translated and excluded from the print document",async()=>{
+  const {AgreementJourney}=await vite.ssrLoadModule("/components/agreement-journey.tsx");
+  const agreement={id:"test",borrowerUid:"borrower",lenderUid:"lender",from:"2026-10-08",to:"2026-10-09",requestStatus:"accepted"};
+  for(const lang of ["da","sv"]) {
+    const html=renderToStaticMarkup(React.createElement(AgreementJourney,{agreement,uid:"borrower",lang,names:{borrower:"Jørn",lender:"Mikkel"},onContinue(){}}));
+    assert.match(html,/aria-current="step"/);assert.equal((html.match(/<li /g)||[]).length,4);
+    assert.match(html,/agreement-journey no-print/);
+    assert.ok(html.includes(lang === "da" ? "Gå til udlevering" : "Gå till utlämning"));
+  }
+  const page=await readFile(path.join(root,"app/page.tsx"),"utf8");
+  assert.match(page,/<AgreementJourney[\s\S]*?<div className="print-agreement">/);
+  assert.match(page,/Ejeren skal først godkende forespørgslen\. Derefter kan I gemme noten/);
+  const css=await readFile(path.join(root,"app/globals.css"),"utf8");
+  assert.match(css,/@media\(max-width:480px\) \{ \.journey-steps \{ grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
+});
