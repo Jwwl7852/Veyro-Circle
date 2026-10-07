@@ -65,8 +65,22 @@ test("return receipt requires both handover signatures and both parties", async 
   assert.match(agreementsApi, /borrowerReturnSignature/);
   assert.match(agreementsApi, /lenderReturnSignature/);
   assert.match(agreementsApi, /fields\.returnedAt/);
-  assert.match(agreementsApi, /returnCondition = \{stringValue:"good"\}/);
+  assert.match(agreementsApi, /data\.returnNote/);
+  assert.match(agreementsApi, /"remarks" : "good"/);
   assert.match(client, /SignaturePhase = "handover" \| "return"/);
+});
+
+test("agreement condition notes are shared, bounded and locked by the first signature", async () => {
+  const agreementsApi = await readFile(new URL("../app/api/agreements/route.ts", import.meta.url), "utf8");
+  const client = await readFile(new URL("../lib/firebase-agreements.ts", import.meta.url), "utf8");
+  assert.match(agreementsApi, /body\.action === "note"/);
+  assert.match(agreementsApi, /note\.length > 600/);
+  assert.match(agreementsApi, /signatureFields\.some/);
+  assert.match(agreementsApi, /currentDocument\.updateTime/);
+  assert.match(agreementsApi, /currentDocument\.exists=false/);
+  assert.match(client, /saveCircleAgreementNote/);
+  assert.match(client, /action:"signature"/);
+  assert.match(client, /action:"note"/);
 });
 
 test("Storage rules restrict image writes by uid, type and size", async () => {

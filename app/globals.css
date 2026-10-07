@@ -255,6 +255,26 @@ button:focus-visible,a:focus-visible { outline:3px solid #819eb6; outline-offset
 .agreement-id-check ul { margin:.55rem 0 0; padding-left:1.25rem; }
 .agreement-id-check li+li { margin-top:.3rem; }
 .agreement-id-check .id-privacy { border-left:3px solid #d79a17; padding:.5rem .65rem; background:#fff8e7; color:#5c4b1f; }
+.agreement-condition-note { margin-top:1rem; border:1px solid #bfd2da; border-radius:.55rem; padding:.9rem; background:#f8fbfc; }
+.condition-note-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:.75rem; }
+.condition-note-heading h3 { font-size:1rem; font-weight:800; }
+.condition-note-help { margin-top:.35rem; color:#526875; font-size:.8rem; line-height:1.5; }
+.condition-note-value { display:grid; gap:.2rem; margin-top:.65rem; border-left:3px solid #94aeb8; padding:.55rem .65rem; background:white; color:#526875; font-size:.82rem; }
+.condition-note-value.has-note { border-left-color:#008eac; color:#172936; }
+.condition-note-value span { white-space:pre-wrap; overflow-wrap:anywhere; }
+.condition-note-editor { display:grid; gap:.55rem; margin-top:.7rem; }
+.condition-note-editor label { display:grid; gap:.35rem; color:#324a58; font-size:.78rem; font-weight:750; }
+.condition-note-editor textarea { width:100%; min-height:88px; resize:vertical; border:1px solid #b8c9d0; border-radius:.45rem; padding:.65rem .7rem; background:white; color:#172936; font:inherit; font-size:.9rem; font-weight:400; line-height:1.45; }
+.condition-note-editor textarea:focus { border-color:#008eac; outline:2px solid rgba(0,142,172,.18); outline-offset:1px; }
+.condition-note-editor footer { display:flex; align-items:center; justify-content:space-between; gap:.75rem; }
+.condition-note-editor footer>span { color:#607583; font-size:.72rem; }
+.condition-note-editor footer button { min-height:40px; }
+.condition-note-notice { border-left:3px solid #d88920; padding:.55rem .65rem; background:#fff7df; color:#674b14; font-size:.78rem; }
+.condition-note-unsaved { color:#a05b16; font-size:.75rem; font-weight:700; }
+.condition-note-locked { display:inline-flex; flex:none; align-items:center; gap:.3rem; border-radius:999px; background:#e7f1f3; padding:.3rem .55rem; color:#315b68; font-size:.72rem; font-weight:800; }
+.condition-note-lock-copy { display:flex; align-items:flex-start; gap:.4rem; margin-top:.65rem; color:#45606d; font-size:.75rem; font-weight:650; }
+.condition-note-lock-copy svg { flex:none; margin-top:.05rem; }
+.paper-note-lines { display:none; }
 .agreement-signatures { display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-top:1.2rem; }
 .agreement-signatures section { display:flex; min-height:210px; flex-direction:column; align-items:stretch; gap:.35rem; border:1px dashed #aab2c1; border-radius:.55rem; padding:1rem; }
 .agreement-signatures section.is-signed { border-style:solid; border-color:#81b69f; background:#f3faf6; }
@@ -474,6 +494,10 @@ button:focus-visible,a:focus-visible { outline:3px solid #819eb6; outline-offset
   .agreement-terms,.agreement-id-check { margin-top:4mm; }
   .agreement-terms li+li { margin-top:2mm; }
   .agreement-id-check { padding:3mm; }
+  .agreement-condition-note { margin-top:3mm; padding:2.5mm; break-inside:avoid; }
+  .condition-note-value { margin-top:1.5mm; padding:1.5mm 2mm; }
+  .paper-note-lines { display:block; }
+  .paper-note-lines span { display:block; height:4mm; border-bottom:1px solid #aeb9c5; }
   .agreement-signatures section { min-height:35mm; }
   .paper-signature-line { padding-top:17mm; }
   .agreement-legal { margin-top:3mm; padding:2.5mm; break-inside:avoid; }

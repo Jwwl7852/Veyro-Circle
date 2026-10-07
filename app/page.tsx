@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CircleAuthScreen, EmailVerificationScreen, FirebaseSetupNotice, circleSignOut, useCircleAuth } from "@/components/circle-auth";
 import { loadCircleProfile, saveCircleProfile } from "@/lib/firebase-profile";
-import { loadCircleAgreements, saveCircleAgreement, saveCircleSignature, type SignaturePhase, type StoredAgreement } from "@/lib/firebase-agreements";
+import { loadCircleAgreements, saveCircleAgreement, saveCircleAgreementNote, saveCircleSignature, type SignaturePhase, type StoredAgreement } from "@/lib/firebase-agreements";
 import { sendCircleMessage, subscribeToCircleMessages, type CircleMessage } from "@/lib/firebase-messages";
 import { deleteCircleListing, loadCircleListingContact, saveCircleListing, subscribeToCircleListings, type CircleListingRecord } from "@/lib/firebase-listings";
 import { openBilling } from "@/lib/billing-client";
@@ -33,7 +33,7 @@ import {
 type Lang = "da" | "sv";
 type Tab = "home" | "items" | "requests" | "profile" | "subscription";
 type AgreementSignature = { dataUrl: string; signedAt: string };
-type Loan = { id: string; item: Listing; from: string; to: string; days: number; total: number; deposit: number; message: string; borrower: Profile; borrowerUid?: string; lenderUid?: string; borrowerSignature?: AgreementSignature; lenderSignature?: AgreementSignature; borrowerReturnSignature?: AgreementSignature; lenderReturnSignature?: AgreementSignature; returnedAt?: string; returnCondition?: "good"; saved?: boolean };
+type Loan = { id: string; item: Listing; from: string; to: string; days: number; total: number; deposit: number; message: string; handoverNote?: string; returnNote?: string; borrower: Profile; borrowerUid?: string; lenderUid?: string; borrowerSignature?: AgreementSignature; lenderSignature?: AgreementSignature; borrowerReturnSignature?: AgreementSignature; lenderReturnSignature?: AgreementSignature; returnedAt?: string; returnCondition?: "good" | "remarks"; saved?: boolean };
 type Listing = {
   id: string; name: string; owner: string; city: string; country: "DK" | "SE";
   ownerStreet: string; ownerPhone: string; ownerUid?: string;
@@ -148,6 +148,9 @@ export default function HomePage() {
   const [agreementsError, setAgreementsError] = useState(false);
   const [agreementSaving, setAgreementSaving] = useState(false);
   const [signatureBusy, setSignatureBusy] = useState<string | null>(null);
+  const [noteBusy, setNoteBusy] = useState<SignaturePhase | null>(null);
+  const [handoverNoteDraft, setHandoverNoteDraft] = useState("");
+  const [returnNoteDraft, setReturnNoteDraft] = useState("");
   const [formError, setFormError] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [newPhotos, setNewPhotos] = useState<CompressedListingImage[]>([]);
@@ -388,15 +391,37 @@ export default function HomePage() {
     const busyKey = `${loan.id}-${phase}-${role}`;
     setSignatureBusy(busyKey);
     try {
-      const result: {returnedAt?:string} = loan.saved ? await saveCircleSignature(loan.id, role, signature, phase) : {};
-      const updated = { ...loan, [field]:signature, ...(result.returnedAt ? {returnedAt:result.returnedAt,returnCondition:"good" as const} : {}) };
+      const result: {returnedAt?:string;returnCondition?:"good"|"remarks"} = loan.saved ? await saveCircleSignature(loan.id, role, signature, phase) : {};
+      const updated = { ...loan, [field]:signature, ...(result.returnedAt ? {returnedAt:result.returnedAt,returnCondition:(result.returnCondition ?? "good")} : {}) };
       setLoans(items => items.map(item => item.id === loan.id ? updated : item));
       setAgreementLoan(updated);
       toast.success(phase === "return"
-        ? (result.returnedAt ? (lang === "da" ? "Returkvitteringen er færdig. Tingen er registreret som tilbageleveret i god stand." : "Returkvittot är klart. Saken är registrerad som återlämnad i gott skick.") : (lang === "da" ? "Din returunderskrift er gemt. Den anden part mangler at underskrive." : "Din retursignatur är sparad. Den andra parten behöver fortfarande signera."))
+        ? (result.returnedAt ? (result.returnCondition === "remarks" ? (lang === "da" ? "Returkvitteringen er færdig og registreret med bemærkninger." : "Returkvittot är klart och registrerat med anmärkningar.") : (lang === "da" ? "Returkvitteringen er færdig. Tingen er registreret som tilbageleveret i god stand." : "Returkvittot är klart. Saken är registrerad som återlämnad i gott skick.")) : (lang === "da" ? "Din returunderskrift er gemt. Den anden part mangler at underskrive." : "Din retursignatur är sparad. Den andra parten behöver fortfarande signera."))
         : loan.saved ? (lang === "da" ? "Underskriften er registreret." : "Signaturen har registrerats.") : (lang === "da" ? "Underskriften er tilføjet. Vælg ‘Gem på min konto’ for at bevare aftalen." : "Signaturen har lagts till. Välj ‘Spara på mitt konto’ för att behålla avtalet."));
     } catch (error) { toast.error(error instanceof Error ? error.message : (lang === "da" ? "Underskriften kunne ikke gemmes. Prøv igen." : "Signaturen kunde inte sparas. Försök igen.")); }
     finally { setSignatureBusy(null); }
+  }
+
+  async function storeAgreementNote(loan: Loan, phase: SignaturePhase) {
+    if (!loan.saved) { toast.error(lang === "da" ? "Gem først aftalen på din konto." : "Spara först avtalet på ditt konto."); return; }
+    const note = phase === "handover" ? handoverNoteDraft : returnNoteDraft;
+    setNoteBusy(phase);
+    try {
+      const savedNote = await saveCircleAgreementNote(loan.id, phase, note);
+      const field = phase === "handover" ? "handoverNote" : "returnNote";
+      const updated = {...loan,[field]:savedNote};
+      setLoans(items=>items.map(item=>item.id === loan.id ? updated : item));
+      setAgreementLoan(updated);
+      if (phase === "handover") setHandoverNoteDraft(savedNote); else setReturnNoteDraft(savedNote);
+      toast.success(lang === "da" ? "Noten er gemt og klar til begge parters godkendelse." : "Anteckningen är sparad och klar för båda parternas godkännande.");
+    } catch (error) { toast.error(error instanceof Error ? error.message : (lang === "da" ? "Noten kunne ikke gemmes." : "Anteckningen kunde inte sparas.")); }
+    finally { setNoteBusy(null); }
+  }
+
+  function openAgreement(loan: Loan) {
+    setHandoverNoteDraft(loan.handoverNote ?? "");
+    setReturnNoteDraft(loan.returnNote ?? "");
+    setAgreementLoan(loan);
   }
 
   if (!configured) return <main className="auth-page"><FirebaseSetupNotice lang={lang} /></main>;
@@ -510,7 +535,7 @@ export default function HomePage() {
           </>}
 
           {tab === "items" && <ItemsView lang={lang} profile={profile} listings={listings.filter(item => item.owned)} plan={listingPlan} onAdd={openAdd} onEdit={openEdit} onDelete={setPendingDelete} />}
-          {tab === "requests" && <RequestsView t={t} loans={loans} lang={lang} loadError={agreementsError} onChat={setChatLoan} onAgreement={setAgreementLoan} />}
+          {tab === "requests" && <RequestsView t={t} loans={loans} lang={lang} loadError={agreementsError} onChat={setChatLoan} onAgreement={openAgreement} />}
           {tab === "profile" && <ProfileView lang={lang} profile={profile} authenticatedEmail={user?.email || undefined} onSave={saveProfile}
             onLogout={logout} onSubscription={() => setTab("subscription")} />}
           {tab === "subscription" && <SubscriptionView lang={lang} plan={listingPlan} used={listings.filter(item => item.owned).length} onBack={() => setTab("profile")} onUpgrade={() => setShowUpgrade(true)} onManage={() => billing("portal")} />}
@@ -592,14 +617,16 @@ export default function HomePage() {
             <dl className="agreement-facts"><div><dt>{lang === "da" ? "Genstand" : "Föremål"}</dt><dd>{agreementLoan.item.name}</dd></div><div><dt>{lang === "da" ? "Periode" : "Period"}</dt><dd>{agreementLoan.from} – {agreementLoan.to} ({agreementLoan.days} {lang === "da" ? "dage" : "dagar"})</dd></div><div><dt>{lang === "da" ? "Lejepris" : "Hyra"}</dt><dd>{agreementLoan.total ? money(agreementLoan.total, agreementLoan.item.country, lang) : t.free}</dd></div><div><dt>{lang === "da" ? "Depositum" : "Deposition"}</dt><dd>{agreementLoan.deposit ? money(agreementLoan.deposit, agreementLoan.item.country, lang) : (lang === "da" ? "Intet aftalt" : "Ingen avtalad")}</dd></div></dl>
             <section className="agreement-terms"><h3>{lang === "da" ? "Aftalens vilkår" : "Avtalsvillkor"}</h3><ol><li>{lang === "da" ? "Genstanden udleveres i den beskrevne stand. Parterne bør dokumentere standen med billeder ved udlevering og aflevering." : "Föremålet lämnas ut i beskrivet skick. Parterna bör dokumentera skicket med bilder vid utlämning och återlämning."}</li><li>{lang === "da" ? "Låneren skal bruge genstanden forsvarligt og returnere den senest på slutdatoen. Tid og sted aftales mellem parterne." : "Låntagaren ska använda föremålet aktsamt och återlämna det senast på slutdagen. Tid och plats avtalas mellan parterna."}</li><li>{lang === "da" ? "Skader, bortkomst, betaling, depositum og eventuel erstatning afgøres mellem parterne efter gældende ret. Veyro Circle er formidler og ikke part i aftalen." : "Skador, förlust, betalning, deposition och eventuell ersättning avgörs mellan parterna enligt gällande rätt. Veyro Circle förmedlar kontakten och är inte part i avtalet."}</li></ol>{agreementLoan.message && <p><b>{lang === "da" ? "Særlig aftale:" : "Särskild överenskommelse:"}</b> {agreementLoan.message}</p>}</section>
             <section className="agreement-id-check"><h3><ShieldCheck size={19} />{lang === "da" ? "Kontrol ved overdragelsen" : "Kontroll vid överlämningen"}</h3><p>{lang === "da" ? "Parterne skal sikre sig, hvem de indgår aftalen med." : "Parterna ska säkerställa vem de ingår avtalet med."}</p><ul><li>{lang === "da" ? "Begge parter foreviser gyldig billedlegitimation med navn og adresse." : "Båda parter visar giltig fotolegitimation med namn och adress."}</li><li>{lang === "da" ? "Navn og adresse på legitimationen sammenholdes med oplysningerne i aftalen." : "Namn och adress på legitimationen jämförs med uppgifterna i avtalet."}</li><li>{lang === "da" ? "Aftalen underskrives på telefonen eller udskrives og underskrives fysisk af begge parter." : "Avtalet signeras på telefonen eller skrivs ut och undertecknas fysiskt av båda parter."}</li></ul><p className="id-privacy">{lang === "da" ? "Tag ikke kopi eller foto af legitimationen, medmindre personen udtrykkeligt har accepteret det og der er et lovligt behov." : "Ta inte en kopia eller ett foto av legitimationen om personen inte uttryckligen har godkänt det och det finns ett lagligt behov."}</p></section>
-            <div className="agreement-signatures"><SignatureBox title={lang === "da" ? "Låners underskrift ved udlevering" : "Låntagarens signatur vid utlämning"} name={agreementLoan.borrower.name} signature={agreementLoan.borrowerSignature} lang={lang} canSign={user?.uid === agreementLoan.borrowerUid} busy={signatureBusy === `${agreementLoan.id}-handover-borrower`} onSign={dataUrl => void signAgreement(agreementLoan, "borrower", dataUrl)} /><SignatureBox title={lang === "da" ? "Ejers underskrift ved udlevering" : "Ägarens signatur vid utlämning"} name={agreementLoan.item.owner} signature={agreementLoan.lenderSignature} lang={lang} canSign={user?.uid === agreementLoan.lenderUid} busy={signatureBusy === `${agreementLoan.id}-handover-lender`} onSign={dataUrl => void signAgreement(agreementLoan, "lender", dataUrl)} /></div>
+            <AgreementConditionNote phase="handover" lang={lang} savedNote={agreementLoan.handoverNote ?? ""} draft={handoverNoteDraft} onChange={setHandoverNoteDraft} saved={Boolean(agreementLoan.saved)} locked={Boolean(agreementLoan.borrowerSignature || agreementLoan.lenderSignature)} enabled onSave={() => void storeAgreementNote(agreementLoan, "handover")} busy={noteBusy === "handover"} />
+            <div className="agreement-signatures"><SignatureBox title={lang === "da" ? "Låners underskrift ved udlevering" : "Låntagarens signatur vid utlämning"} name={agreementLoan.borrower.name} signature={agreementLoan.borrowerSignature} lang={lang} canSign={Boolean(agreementLoan.saved && handoverNoteDraft.trim() === (agreementLoan.handoverNote ?? "") && user?.uid === agreementLoan.borrowerUid)} busy={signatureBusy === `${agreementLoan.id}-handover-borrower`} onSign={dataUrl => void signAgreement(agreementLoan, "borrower", dataUrl)} /><SignatureBox title={lang === "da" ? "Ejers underskrift ved udlevering" : "Ägarens signatur vid utlämning"} name={agreementLoan.item.owner} signature={agreementLoan.lenderSignature} lang={lang} canSign={Boolean(agreementLoan.saved && handoverNoteDraft.trim() === (agreementLoan.handoverNote ?? "") && user?.uid === agreementLoan.lenderUid)} busy={signatureBusy === `${agreementLoan.id}-handover-lender`} onSign={dataUrl => void signAgreement(agreementLoan, "lender", dataUrl)} /></div>
             <p className="agreement-legal"><LockKeyhole size={15} />{lang === "da" ? "Ved underskrift bekræfter hver part, at oplysningerne er korrekte, og at den anden parts navn og adresse er kontrolleret mod forevist ID." : "Genom underskrift bekräftar varje part att uppgifterna är korrekta och att den andra partens namn och adress har kontrollerats mot visad legitimation."}</p>
             <section className={`return-receipt ${agreementLoan.returnedAt ? "is-complete" : ""}`}>
-              <header><div><p className="eyebrow">{lang === "da" ? "Returkvittering" : "Returkvitto"}</p><h3>{lang === "da" ? "Tilbageleveret i god stand" : "Återlämnad i gott skick"}</h3></div>{agreementLoan.returnedAt && <span><Check size={16} />{lang === "da" ? "Afsluttet" : "Avslutat"}</span>}</header>
-              <p>{lang === "da" ? "Ved underskrift bekræfter låneren, at tingen er afleveret, og ejeren bekræfter, at den er modtaget i god stand. Hvis der er skader eller uenighed, skal parterne i stedet beskrive det i chatten, før de underskriver." : "Genom signering bekräftar låntagaren att saken är återlämnad och ägaren att den har mottagits i gott skick. Vid skada eller oenighet ska parterna i stället beskriva detta i chatten innan de signerar."}</p>
+              <header><div><p className="eyebrow">{lang === "da" ? "Returkvittering" : "Returkvitto"}</p><h3>{agreementLoan.returnedAt ? (agreementLoan.returnCondition === "remarks" ? (lang === "da" ? "Tilbageleveret med bemærkninger" : "Återlämnad med anmärkningar") : (lang === "da" ? "Tilbageleveret i god stand" : "Återlämnad i gott skick")) : (lang === "da" ? "Kvittering for tilbagelevering" : "Kvitto på återlämning")}</h3></div>{agreementLoan.returnedAt && <span><Check size={16} />{lang === "da" ? "Afsluttet" : "Avslutat"}</span>}</header>
+              <p>{lang === "da" ? "Parterne skriver eventuelle skader eller andre forhold i returnoten. Ved underskrift bekræfter låneren afleveringen, og ejeren bekræfter modtagelsen samt den gemte note. En tom note betyder, at tingen er tilbageleveret i god stand." : "Parterna skriver eventuella skador eller andra förhållanden i returanteckningen. Genom signering bekräftar låntagaren återlämningen och ägaren mottagandet samt den sparade anteckningen. En tom anteckning betyder att saken har återlämnats i gott skick."}</p>
               {!agreementLoan.returnedAt && (!agreementLoan.saved || !agreementLoan.borrowerSignature || !agreementLoan.lenderSignature) && <p className="return-locked no-print"><LockKeyhole size={16} />{lang === "da" ? "Returunderskrifter åbnes, når aftalen er gemt og udleveringen er underskrevet af begge parter." : "Retursignaturer öppnas när avtalet har sparats och utlämningen har signerats av båda parter."}</p>}
               {agreementLoan.returnedAt && <p className="return-completed-at">{lang === "da" ? "Retur registreret" : "Retur registrerad"}: {new Intl.DateTimeFormat(lang === "da" ? "da-DK" : "sv-SE", {dateStyle:"long",timeStyle:"short"}).format(new Date(agreementLoan.returnedAt))}</p>}
-              <div className="agreement-signatures return-signatures"><SignatureBox title={lang === "da" ? "Låner · tingen er afleveret" : "Låntagare · saken är återlämnad"} name={agreementLoan.borrower.name} signature={agreementLoan.borrowerReturnSignature} lang={lang} canSign={Boolean(agreementLoan.saved && agreementLoan.borrowerSignature && agreementLoan.lenderSignature && user?.uid === agreementLoan.borrowerUid)} busy={signatureBusy === `${agreementLoan.id}-return-borrower`} onSign={dataUrl => void signAgreement(agreementLoan, "borrower", dataUrl, "return")} /><SignatureBox title={lang === "da" ? "Ejer · modtaget i god stand" : "Ägare · mottagen i gott skick"} name={agreementLoan.item.owner} signature={agreementLoan.lenderReturnSignature} lang={lang} canSign={Boolean(agreementLoan.saved && agreementLoan.borrowerSignature && agreementLoan.lenderSignature && user?.uid === agreementLoan.lenderUid)} busy={signatureBusy === `${agreementLoan.id}-return-lender`} onSign={dataUrl => void signAgreement(agreementLoan, "lender", dataUrl, "return")} /></div>
+              <AgreementConditionNote phase="return" lang={lang} savedNote={agreementLoan.returnNote ?? ""} draft={returnNoteDraft} onChange={setReturnNoteDraft} saved={Boolean(agreementLoan.saved)} locked={Boolean(agreementLoan.borrowerReturnSignature || agreementLoan.lenderReturnSignature || agreementLoan.returnedAt)} enabled={Boolean(agreementLoan.borrowerSignature && agreementLoan.lenderSignature)} onSave={() => void storeAgreementNote(agreementLoan, "return")} busy={noteBusy === "return"} />
+              <div className="agreement-signatures return-signatures"><SignatureBox title={lang === "da" ? "Låner · aflevering og note godkendt" : "Låntagare · återlämning och anteckning godkänd"} name={agreementLoan.borrower.name} signature={agreementLoan.borrowerReturnSignature} lang={lang} canSign={Boolean(agreementLoan.saved && agreementLoan.borrowerSignature && agreementLoan.lenderSignature && returnNoteDraft.trim() === (agreementLoan.returnNote ?? "") && user?.uid === agreementLoan.borrowerUid)} busy={signatureBusy === `${agreementLoan.id}-return-borrower`} onSign={dataUrl => void signAgreement(agreementLoan, "borrower", dataUrl, "return")} /><SignatureBox title={lang === "da" ? "Ejer · modtagelse og note godkendt" : "Ägare · mottagande och anteckning godkänd"} name={agreementLoan.item.owner} signature={agreementLoan.lenderReturnSignature} lang={lang} canSign={Boolean(agreementLoan.saved && agreementLoan.borrowerSignature && agreementLoan.lenderSignature && returnNoteDraft.trim() === (agreementLoan.returnNote ?? "") && user?.uid === agreementLoan.lenderUid)} busy={signatureBusy === `${agreementLoan.id}-return-lender`} onSign={dataUrl => void signAgreement(agreementLoan, "lender", dataUrl, "return")} /></div>
             </section>
           </div>
           <div className="agreement-actions no-print"><div className="agreement-choice-buttons"><Button disabled={agreementSaving || agreementLoan.saved} onClick={() => void storeAgreement(agreementLoan)}><Save size={17} />{agreementLoan.saved ? (lang === "da" ? "Gemt på kontoen" : "Sparat på kontot") : agreementSaving ? (lang === "da" ? "Gemmer…" : "Sparar…") : (lang === "da" ? "Gem på min konto" : "Spara på mitt konto")}</Button><Button variant="outline" onClick={() => printAgreementDocument(lang)}><Printer size={17} />{lang === "da" ? "Udskriv aftalen" : "Skriv ut avtalet"}</Button></div><span>{lang === "da" ? "Gemte aftaler kan ses under Mine lån i 12 måneder." : "Sparade avtal visas under Mina lån i 12 månader."}</span></div>
@@ -694,7 +721,7 @@ function printAgreementDocument(lang: Lang) {
   }
   printDocument.open();
   printDocument.write(`<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><title>Veyro Circle · ${lang === "da" ? "Leje- og låneaftale" : "Hyres- och låneavtal"}</title><style>
-    @page{size:A4 portrait;margin:6mm}*{box-sizing:border-box;min-width:0}html,body{width:100%;margin:0;padding:0;overflow:visible}body{color:#172936;font:8.6px/1.16 Arial,sans-serif;overflow-wrap:anywhere}h1,h2,h3,p{margin-top:0}h2{font-size:17px;line-height:1.1;margin-bottom:2px}h3{font-size:10.5px;line-height:1.15;margin-bottom:3px}.print-agreement{width:100%;max-width:100%;overflow:hidden}.agreement-header{border-bottom:2px solid #008eac;padding-bottom:4px}.agreement-header p{margin-bottom:2px}.eyebrow,small,dt{color:#607583;font-size:7.3px;font-weight:700;text-transform:uppercase;letter-spacing:.045em}.agreement-parties,.agreement-signatures,.agreement-facts{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:5px;margin-top:5px}.agreement-parties section,.agreement-signatures section{display:grid;gap:1px;border:1px solid #d6e1e6;padding:4px 5px;break-inside:avoid}.agreement-parties p{margin-bottom:1px}.agreement-facts{gap:0;border:1px solid #d6e1e6;break-inside:avoid}.agreement-facts div{padding:3px 5px;border-bottom:1px solid #d6e1e6}.agreement-facts dd{margin:0;font-weight:700}.agreement-terms,.agreement-id-check{margin-top:5px}.agreement-terms ol,.agreement-id-check ul{margin:2px 0;padding-left:14px}.agreement-terms li+li,.agreement-id-check li+li{margin-top:1px}.agreement-terms p{margin-bottom:2px}.agreement-id-check{border:1px solid #86b8c2;padding:4px 5px;background:#eef9fa;break-inside:avoid}.agreement-id-check p{margin-bottom:2px}.agreement-signatures section{min-height:54px;border-style:dashed}.agreement-signatures p{margin-bottom:1px}.paper-signature-line{display:block;margin-top:auto;padding-top:15px;border-bottom:1px solid #172936}.agreement-legal{margin:5px 0 0;border-left:3px solid #d88920;padding:4px 5px;background:#fff7df;break-inside:avoid}.return-receipt{margin-top:5px;border:1px solid #7eb7c2;padding:4px 5px;background:#f2fbfc;break-inside:avoid}.return-receipt>header{display:flex;align-items:center;justify-content:space-between}.return-receipt>header p,.return-receipt>p{margin:1px 0 2px}.return-receipt>header span{font-weight:700}.return-signatures{margin-top:3px}.return-signatures section{min-height:48px}.signature-image{max-width:100%;max-height:34px;object-fit:contain}svg{display:none}
+    @page{size:A4 portrait;margin:6mm}*{box-sizing:border-box;min-width:0}html,body{width:100%;margin:0;padding:0;overflow:visible}body{color:#172936;font:8.2px/1.13 Arial,sans-serif;overflow-wrap:anywhere}h1,h2,h3,p{margin-top:0}h2{font-size:16px;line-height:1.08;margin-bottom:2px}h3{font-size:10px;line-height:1.12;margin-bottom:2px}.print-agreement{width:100%;max-width:100%;overflow:hidden}.agreement-header{border-bottom:2px solid #008eac;padding-bottom:3px}.agreement-header p{margin-bottom:1px}.eyebrow,small,dt{color:#607583;font-size:7px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}.agreement-parties,.agreement-signatures,.agreement-facts{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:4px;margin-top:4px}.agreement-parties section,.agreement-signatures section{display:grid;gap:1px;border:1px solid #d6e1e6;padding:3px 4px;break-inside:avoid}.agreement-parties p{margin-bottom:1px}.agreement-facts{gap:0;border:1px solid #d6e1e6;break-inside:avoid}.agreement-facts div{padding:2px 4px;border-bottom:1px solid #d6e1e6}.agreement-facts dd{margin:0;font-weight:700}.agreement-terms,.agreement-id-check{margin-top:4px}.agreement-terms ol,.agreement-id-check ul{margin:1px 0;padding-left:13px}.agreement-terms li+li,.agreement-id-check li+li{margin-top:1px}.agreement-terms p{margin-bottom:1px}.agreement-id-check{border:1px solid #86b8c2;padding:3px 4px;background:#eef9fa;break-inside:avoid}.agreement-id-check p{margin-bottom:1px}.agreement-condition-note{margin-top:4px;border:1px solid #bfd2da;padding:3px 4px;background:#f8fbfc;break-inside:avoid}.condition-note-heading{display:flex;justify-content:space-between}.condition-note-heading p,.condition-note-help{margin-bottom:1px}.condition-note-value{display:grid;gap:1px;margin-top:2px;border-left:2px solid #008eac;padding:2px 4px;background:white}.condition-note-value span{white-space:pre-wrap}.paper-note-lines{display:block}.paper-note-lines span{display:block;height:8px;border-bottom:1px solid #aeb9c5}.agreement-signatures section{min-height:45px;border-style:dashed}.agreement-signatures p{margin-bottom:1px}.paper-signature-line{display:block;margin-top:auto;padding-top:11px;border-bottom:1px solid #172936}.agreement-legal{margin:4px 0 0;border-left:3px solid #d88920;padding:3px 4px;background:#fff7df;break-inside:avoid}.return-receipt{margin-top:4px;border:1px solid #7eb7c2;padding:3px 4px;background:#f2fbfc;break-inside:avoid}.return-receipt>header{display:flex;align-items:center;justify-content:space-between}.return-receipt>header p,.return-receipt>p{margin:1px 0}.return-receipt>header span{font-weight:700}.return-signatures{margin-top:2px}.return-signatures section{min-height:42px}.signature-image{max-width:100%;max-height:30px;object-fit:contain}svg{display:none}
   </style></head><body>${copy.outerHTML}</body></html>`);
   printDocument.close();
   window.setTimeout(() => {
@@ -714,7 +741,7 @@ function agreementForCloud(loan: Loan): StoredAgreement {
     lender:{name:loan.item.owner,street:loan.item.ownerStreet,phone:loan.item.ownerPhone,place:loan.item.place},
     item:{id:loan.item.id,name:loan.item.name,category:loan.item.category,country:loan.item.country,dailyPrice:loan.item.dailyPrice},
     from:loan.from,to:loan.to,days:loan.days,total:loan.total,deposit:loan.deposit,message:loan.message,
-    borrowerSignature:loan.borrowerSignature,lenderSignature:loan.lenderSignature,borrowerReturnSignature:loan.borrowerReturnSignature,lenderReturnSignature:loan.lenderReturnSignature,returnedAt:loan.returnedAt,returnCondition:loan.returnCondition,
+    handoverNote:loan.handoverNote,returnNote:loan.returnNote,borrowerSignature:loan.borrowerSignature,lenderSignature:loan.lenderSignature,borrowerReturnSignature:loan.borrowerReturnSignature,lenderReturnSignature:loan.lenderReturnSignature,returnedAt:loan.returnedAt,returnCondition:loan.returnCondition,
   };
 }
 
@@ -722,7 +749,7 @@ function agreementFromCloud(record: StoredAgreement): Loan {
   const category = categories.find(item => item.id === record.item.category) || categories[1];
   return {
     id:record.id,from:record.from,to:record.to,days:record.days,total:record.total,deposit:record.deposit,message:record.message,
-    borrower:record.borrower,borrowerUid:record.borrowerUid,lenderUid:record.lenderUid,borrowerSignature:record.borrowerSignature,lenderSignature:record.lenderSignature,borrowerReturnSignature:record.borrowerReturnSignature,lenderReturnSignature:record.lenderReturnSignature,returnedAt:record.returnedAt,returnCondition:record.returnCondition,saved:true,
+    borrower:record.borrower,borrowerUid:record.borrowerUid,lenderUid:record.lenderUid,handoverNote:record.handoverNote,returnNote:record.returnNote,borrowerSignature:record.borrowerSignature,lenderSignature:record.lenderSignature,borrowerReturnSignature:record.borrowerReturnSignature,lenderReturnSignature:record.lenderReturnSignature,returnedAt:record.returnedAt,returnCondition:record.returnCondition,saved:true,
     item:{id:record.item.id,name:record.item.name,owner:record.lender.name,ownerStreet:record.lender.street,ownerPhone:record.lender.phone,ownerUid:record.lenderUid,city:record.lender.place.city,country:record.item.country,distance:0,category:record.item.category,icon:category.icon,color:categoryColors[record.item.category] || categoryColors.tools,description:"",rating:0,availability:"",place:record.lender.place,dailyPrice:record.item.dailyPrice},
   };
 }
@@ -746,10 +773,10 @@ function RequestsView({ t, loans, lang, loadError, onChat, onAgreement }: { t: t
     {loadError && <p className="agreements-load-note" role="status">{lang === "da" ? "Dine gemte aftaler kan ikke vises lige nu. Firebase-adgangen skal opdateres, men resten af Circle virker fortsat." : "Dina sparade avtal kan inte visas just nu. Firebase-åtkomsten behöver uppdateras, men resten av Circle fungerar fortfarande."}</p>}
     <div className="mt-6 space-y-4">
       {loans.map(loan=>{ const returned = Boolean(loan.returnedAt || (loan.borrowerReturnSignature && loan.lenderReturnSignature)); const signed = Boolean(loan.borrowerSignature && loan.lenderSignature); return <article key={loan.id} className="request-summary">
-        <LoanRow title={loan.item.name} owner={loan.item.owner} ticket={loan.id} status={returned ? (lang === "da" ? "Tilbageleveret" : "Återlämnad") : signed ? (lang === "da" ? "Afventer returnering" : "Inväntar retur") : t.awaiting} statusClass={returned ? "approved" : signed ? "active-loan" : "waiting"} icon={loan.item.icon} onChat={() => onChat(loan)} chatLabel={t.chat} dates={`${formatAgreementDate(loan.from, lang)} – ${formatAgreementDate(loan.to, lang)}`} lang={lang} />
+        <LoanRow title={loan.item.name} owner={loan.item.owner} ticket={loan.id} status={returned ? (loan.returnCondition === "remarks" ? (lang === "da" ? "Tilbageleveret med bemærkninger" : "Återlämnad med anmärkningar") : (lang === "da" ? "Tilbageleveret" : "Återlämnad")) : signed ? (lang === "da" ? "Afventer returnering" : "Inväntar retur") : t.awaiting} statusClass={returned ? "approved" : signed ? "active-loan" : "waiting"} icon={loan.item.icon} onChat={() => onChat(loan)} chatLabel={t.chat} dates={`${formatAgreementDate(loan.from, lang)} – ${formatAgreementDate(loan.to, lang)}`} lang={lang} />
         <div className="request-price"><span>{loan.days} {lang === "da" ? "kalenderdage" : "kalenderdagar"}</span><b>{loan.total === 0 ? t.free : money(loan.total, loan.item.country, lang)}</b></div>
         {loan.message && <p>{loan.message}</p>}
-        <button type="button" className="agreement-open" onClick={() => onAgreement(loan)}><FileSignature size={18} /><span>{lang === "da" ? "Åbn aftale og returkvittering" : "Öppna avtal och returkvitto"}</span><b>{returned ? (lang === "da" ? "Retur afsluttet" : "Retur avslutad") : signed ? (lang === "da" ? "Klar til retur" : "Klar för retur") : (lang === "da" ? "Klar til underskrift" : "Klar för signering")}</b></button>
+        <button type="button" className="agreement-open" onClick={() => onAgreement(loan)}><FileSignature size={18} /><span>{lang === "da" ? "Åbn aftale og returkvittering" : "Öppna avtal och returkvitto"}</span><b>{returned ? (loan.returnCondition === "remarks" ? (lang === "da" ? "Retur med bemærkninger" : "Retur med anmärkningar") : (lang === "da" ? "Retur afsluttet" : "Retur avslutad")) : signed ? (lang === "da" ? "Klar til retur" : "Klar för retur") : (lang === "da" ? "Klar til underskrift" : "Klar för signering")}</b></button>
       </article>;})}
       {!loans.length && !loadError && <div className="my-items-empty"><MessageCircle size={28} /><p>{lang === "da" ? "Du har endnu ingen låne- eller lejeaftaler." : "Du har ännu inga låne- eller hyresavtal."}</p></div>}
     </div>
@@ -782,6 +809,48 @@ function ChatDialog({ loan, userUid, lang, onClose }: { loan: Loan | null; userU
 
 function AgreementParty({ title, name, street, postcode, city, phone }: { title: string; name: string; street: string; postcode: string; city: string; phone: string }) {
   return <section><small>{title}</small><b>{name}</b><span>{street}</span><span>{postcode} {city}</span><span>Telefon: {phone}</span></section>;
+}
+
+function AgreementConditionNote({ phase, lang, savedNote, draft, onChange, saved, locked, enabled, onSave, busy }: {
+  phase: SignaturePhase;
+  lang: Lang;
+  savedNote: string;
+  draft: string;
+  onChange: (value: string) => void;
+  saved: boolean;
+  locked: boolean;
+  enabled: boolean;
+  onSave: () => void;
+  busy: boolean;
+}) {
+  const da = lang === "da";
+  const handover = phase === "handover";
+  const normalizedSaved = savedNote.trim();
+  const normalizedDraft = draft.trim();
+  const dirty = normalizedDraft !== normalizedSaved;
+  const heading = handover ? (da ? "Tilstandsnote ved udlevering" : "Skickanteckning vid utlämning") : (da ? "Tilstandsnote ved tilbagelevering" : "Skickanteckning vid återlämning");
+  const emptyText = da ? "Ingen bemærkninger registreret." : "Inga anmärkningar registrerade.";
+  const help = handover
+    ? (da ? "Skriv eksisterende skader eller mangler, før tingen udleveres. Begge parter godkender den samme note med deres underskrift." : "Skriv befintliga skador eller brister innan saken lämnas ut. Båda parter godkänner samma anteckning med sin signatur.")
+    : (da ? "Skriv nye skader, mangler eller andre forhold ved returneringen. Begge parter godkender den samme note med deres underskrift." : "Skriv nya skador, brister eller andra förhållanden vid återlämningen. Båda parter godkänner samma anteckning med sin signatur.");
+  const placeholder = handover
+    ? (da ? "Fx: Plastikken ved håndtaget er revnet ved udlevering." : "T.ex.: Plasten vid handtaget är sprucken vid utlämning.")
+    : (da ? "Fx: Der er kommet en ny revne, eller en del mangler ved returnering." : "T.ex.: En ny spricka har uppstått eller en del saknas vid återlämning.");
+
+  return <section className="agreement-condition-note">
+    <div className="condition-note-heading"><div><p className="eyebrow">{handover ? (da ? "Udlevering" : "Utlämning") : (da ? "Tilbagelevering" : "Återlämning")}</p><h3>{heading}</h3></div>{locked && <span className="condition-note-locked no-print"><LockKeyhole size={14} />{da ? "Låst" : "Låst"}</span>}</div>
+    <p className="condition-note-help">{help}</p>
+    <div className={`condition-note-value ${normalizedSaved ? "has-note" : ""}`}><b>{da ? "Aftalt note:" : "Avtalad anteckning:"}</b><span>{normalizedSaved || emptyText}</span></div>
+    {!normalizedSaved && <div className="paper-note-lines"><span /><span /></div>}
+    {!locked && <div className="condition-note-editor no-print">
+      {!saved ? <p className="condition-note-notice">{da ? "Gem aftalen på kontoen, før noten kan redigeres og godkendes digitalt." : "Spara avtalet på kontot innan anteckningen kan redigeras och godkännas digitalt."}</p> : !enabled ? <p className="condition-note-notice">{da ? "Begge parter skal først underskrive udleveringen." : "Båda parter måste först signera utlämningen."}</p> : <>
+        <label htmlFor={`agreement-${phase}-note`}>{da ? "Fælles note" : "Gemensam anteckning"}<textarea id={`agreement-${phase}-note`} value={draft} onChange={event=>onChange(event.target.value)} maxLength={600} rows={3} placeholder={placeholder} /></label>
+        <footer><span>{draft.length} / 600</span><Button type="button" variant="outline" disabled={busy || !dirty} onClick={onSave}>{busy ? <LoaderCircle className="animate-spin" size={16} /> : <Save size={16} />}{busy ? (da ? "Gemmer…" : "Sparar…") : (da ? "Gem note" : "Spara anteckning")}</Button></footer>
+        {dirty && <p className="condition-note-unsaved">{da ? "Gem ændringen, før en af parterne underskriver." : "Spara ändringen innan någon av parterna signerar."}</p>}
+      </>}
+    </div>}
+    {locked && <p className="condition-note-lock-copy no-print"><LockKeyhole size={14} />{da ? "Noten er låst, fordi mindst én part har underskrevet. Den anden part godkender præcis denne note." : "Anteckningen är låst eftersom minst en part har signerat. Den andra parten godkänner exakt denna anteckning."}</p>}
+  </section>;
 }
 
 function SignatureBox({ title, name, signature, lang, canSign = true, busy = false, onSign }: { title: string; name: string; signature?: AgreementSignature; lang: Lang; canSign?: boolean; busy?: boolean; onSign: (dataUrl: string) => void }) {

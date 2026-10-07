@@ -55,9 +55,11 @@ export async function POST(request:Request) {
     delete agreement.borrowerSignature; delete agreement.lenderSignature;
     delete agreement.borrowerReturnSignature; delete agreement.lenderReturnSignature;
     delete agreement.returnedAt; delete agreement.returnCondition;
+    agreement.handoverNote = ""; agreement.returnNote = "";
     const now = new Date(); const retention = new Date(now); retention.setMonth(retention.getMonth()+12);
     const fields = Object.fromEntries(Object.entries({...agreement,createdAt:now.toISOString(),updatedAt:now.toISOString(),retentionUntil:retention.toISOString()}).map(([key,value])=>[key, key.endsWith("At") || key === "retentionUntil" ? {timestampValue:String(value)} : encode(value as JsonValue)]));
-    const response = await fetch(firestoreDocumentUrl(`agreements/${agreement.id}`), {method:"PATCH",headers:{authorization:`Bearer ${await serviceToken()}`,"content-type":"application/json"},body:JSON.stringify({fields})});
+    const response = await fetch(`${firestoreDocumentUrl(`agreements/${agreement.id}`)}?currentDocument.exists=false`, {method:"PATCH",headers:{authorization:`Bearer ${await serviceToken()}`,"content-type":"application/json"},body:JSON.stringify({fields})});
+    if (response.status === 409 || response.status === 412) return error("Aftalen er allerede gemt og kan ikke overskrives.",409);
     if (!response.ok) throw new Error("Aftalen kunne ikke gemmes i Firebase.");
     return NextResponse.json({ok:true});
   } catch (cause) { return error(cause instanceof Error ? cause.message : "Aftalen kunne ikke gemmes.",500); }
@@ -66,17 +68,35 @@ export async function POST(request:Request) {
 export async function PATCH(request:Request) {
   try {
     const identity = await verifyFirebaseRequest(request);
-    const body = await request.json() as {id?:string;role?:"borrower"|"lender";phase?:"handover"|"return";signature?:JsonValue};
-    if (!body.id || !body.signature || !["borrower","lender"].includes(body.role ?? "") || !["handover","return"].includes(body.phase ?? "handover")) return error("Underskriften er ugyldig.");
-    const signature = body.signature as Record<string,JsonValue>;
-    if (typeof signature.dataUrl !== "string" || !signature.dataUrl.startsWith("data:image/png;base64,") || signature.dataUrl.length > 400_000 || typeof signature.signedAt !== "string" || !Number.isFinite(Date.parse(signature.signedAt))) return error("Underskriftsdata er ugyldige.");
+    const body = await request.json() as {id?:string;action?:"signature"|"note";role?:"borrower"|"lender";phase?:"handover"|"return";signature?:JsonValue;note?:string};
+    if (!body.id || !["handover","return"].includes(body.phase ?? "handover")) return error("Aftaleopdateringen er ugyldig.");
     const documentResponse = await fetch(firestoreDocumentUrl(`agreements/${body.id}`), {headers:{authorization:`Bearer ${await serviceToken()}`}});
     if (!documentResponse.ok) return error("Aftalen findes ikke.",404);
-    const document = await documentResponse.json() as {fields?:Record<string,FirestoreValue>};
+    const document = await documentResponse.json() as {fields?:Record<string,FirestoreValue>;updateTime?:string};
     const data = Object.fromEntries(Object.entries(document.fields ?? {}).map(([key,value])=>[key,decode(value)]));
+    const participants = Array.isArray(data.participantUids) ? data.participantUids : [];
+    if (!participants.includes(identity.localId)) return error("Du er ikke part i denne aftale.",403);
+    const phase = body.phase ?? "handover";
+    if (body.action === "note") {
+      const note = typeof body.note === "string" ? body.note.trim() : "";
+      if (note.length > 600) return error("Noten må højst indeholde 600 tegn.");
+      if (phase === "return" && (!data.borrowerSignature || !data.lenderSignature)) return error("Udleveringen skal være underskrevet af begge parter først.",409);
+      const signatureFields = phase === "return" ? ["borrowerReturnSignature","lenderReturnSignature"] : ["borrowerSignature","lenderSignature"];
+      if (signatureFields.some(field=>Boolean(data[field]))) return error("Noten er låst, fordi en part allerede har underskrevet.",409);
+      const field = phase === "return" ? "returnNote" : "handoverNote";
+      const now = new Date().toISOString();
+      const fields:Record<string,FirestoreValue> = {[field]:{stringValue:note},updatedAt:{timestampValue:now}};
+      const masks = [...Object.keys(fields).map(key=>`updateMask.fieldPaths=${encodeURIComponent(key)}`), ...(document.updateTime ? [`currentDocument.updateTime=${encodeURIComponent(document.updateTime)}`] : [])].join("&");
+      const response = await fetch(`${firestoreDocumentUrl(`agreements/${body.id}`)}?${masks}`,{method:"PATCH",headers:{authorization:`Bearer ${await serviceToken()}`,"content-type":"application/json"},body:JSON.stringify({fields})});
+      if (response.status === 409 || response.status === 412) return error("Aftalen blev ændret samtidig. Åbn den igen og prøv på ny.",409);
+      if (!response.ok) throw new Error("Noten kunne ikke gemmes.");
+      return NextResponse.json({ok:true,note});
+    }
+    if (!body.signature || !["borrower","lender"].includes(body.role ?? "")) return error("Underskriften er ugyldig.");
+    const signature = body.signature as Record<string,JsonValue>;
+    if (typeof signature.dataUrl !== "string" || !signature.dataUrl.startsWith("data:image/png;base64,") || signature.dataUrl.length > 400_000 || typeof signature.signedAt !== "string" || !Number.isFinite(Date.parse(signature.signedAt))) return error("Underskriftsdata er ugyldige.");
     const expected = body.role === "borrower" ? data.borrowerUid : data.lenderUid;
     if (expected !== identity.localId) return error("Du kan kun underskrive som dig selv.",403);
-    const phase = body.phase ?? "handover";
     if (phase === "return" && (!data.borrowerSignature || !data.lenderSignature)) return error("Begge parter skal underskrive udleveringen, før returkvitteringen kan underskrives.",409);
     if (data.returnedAt) return error("Returkvitteringen er allerede afsluttet.",409);
     const field = phase === "return" ? `${body.role}ReturnSignature` : `${body.role}Signature`;
@@ -87,12 +107,13 @@ export async function PATCH(request:Request) {
     const completedReturn = phase === "return" && Boolean(data[otherReturnField]);
     if (completedReturn) {
       fields.returnedAt = {timestampValue:now};
-      fields.returnCondition = {stringValue:"good"};
+      fields.returnCondition = {stringValue:typeof data.returnNote === "string" && data.returnNote.trim() ? "remarks" : "good"};
     }
-    const masks = Object.keys(fields).map(key=>`updateMask.fieldPaths=${encodeURIComponent(key)}`).join("&");
+    const masks = [...Object.keys(fields).map(key=>`updateMask.fieldPaths=${encodeURIComponent(key)}`), ...(document.updateTime ? [`currentDocument.updateTime=${encodeURIComponent(document.updateTime)}`] : [])].join("&");
     const url = `${firestoreDocumentUrl(`agreements/${body.id}`)}?${masks}`;
     const response = await fetch(url,{method:"PATCH",headers:{authorization:`Bearer ${await serviceToken()}`,"content-type":"application/json"},body:JSON.stringify({fields})});
+    if (response.status === 409 || response.status === 412) return error("Aftalen blev ændret samtidig. Åbn den igen og prøv på ny.",409);
     if (!response.ok) throw new Error("Underskriften kunne ikke gemmes.");
-    return NextResponse.json({ok:true,...(completedReturn ? {returnedAt:now} : {})});
+    return NextResponse.json({ok:true,...(completedReturn ? {returnedAt:now,returnCondition:typeof data.returnNote === "string" && data.returnNote.trim() ? "remarks" : "good"} : {})});
   } catch (cause) { return error(cause instanceof Error ? cause.message : "Underskriften kunne ikke gemmes.",500); }
 }

@@ -19,12 +19,14 @@ export type StoredAgreement = {
   total: number;
   deposit: number;
   message: string;
+  handoverNote?: string;
+  returnNote?: string;
   borrowerSignature?: StoredSignature;
   lenderSignature?: StoredSignature;
   borrowerReturnSignature?: StoredSignature;
   lenderReturnSignature?: StoredSignature;
   returnedAt?: string;
-  returnCondition?: "good";
+  returnCondition?: "good" | "remarks";
 };
 
 export async function saveCircleAgreement(agreement: StoredAgreement) {
@@ -45,8 +47,16 @@ export async function loadCircleAgreements(uid: string): Promise<StoredAgreement
 
 export async function saveCircleSignature(id: string, role: "borrower" | "lender", signature: StoredSignature, phase: SignaturePhase = "handover") {
   if (!auth?.currentUser) throw new Error("Du skal være logget ind.");
-  const response = await fetch("/api/agreements",{method:"PATCH",headers:{"content-type":"application/json",authorization:`Bearer ${await auth.currentUser.getIdToken()}`},body:JSON.stringify({id,role,phase,signature})});
-  const data = await response.json() as {error?:string;returnedAt?:string};
+  const response = await fetch("/api/agreements",{method:"PATCH",headers:{"content-type":"application/json",authorization:`Bearer ${await auth.currentUser.getIdToken()}`},body:JSON.stringify({id,action:"signature",role,phase,signature})});
+  const data = await response.json() as {error?:string;returnedAt?:string;returnCondition?:"good"|"remarks"};
   if (!response.ok) throw new Error(data.error || "Underskriften kunne ikke gemmes.");
   return data;
+}
+
+export async function saveCircleAgreementNote(id: string, phase: SignaturePhase, note: string) {
+  if (!auth?.currentUser) throw new Error("Du skal være logget ind.");
+  const response = await fetch("/api/agreements",{method:"PATCH",headers:{"content-type":"application/json",authorization:`Bearer ${await auth.currentUser.getIdToken()}`},body:JSON.stringify({id,action:"note",phase,note})});
+  const data = await response.json() as {error?:string;note?:string};
+  if (!response.ok) throw new Error(data.error || "Noten kunne ikke gemmes.");
+  return data.note ?? "";
 }

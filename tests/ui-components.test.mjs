@@ -75,6 +75,10 @@ test("agreement offers separate account storage and a standalone print document"
   assert.match(page, /Tilbageleveret i god stand/);
   assert.match(page, /borrowerReturnSignature/);
   assert.match(page, /lenderReturnSignature/);
+  assert.match(page, /Tilstandsnote ved udlevering/);
+  assert.match(page, /Tilstandsnote ved tilbagelevering/);
+  assert.match(page, /Noten er låst/);
+  assert.match(page, /Tilbageleveret med bemærkninger/);
 });
 
 test("forwards progress semantics to the primitive", async () => {
