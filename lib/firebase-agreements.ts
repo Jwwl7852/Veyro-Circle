@@ -4,6 +4,7 @@ import { auth } from "@/lib/firebase-client";
 import type { Country, Place, Profile } from "@/lib/marketplace";
 
 export type StoredSignature = { dataUrl: string; signedAt: string };
+export type SignaturePhase = "handover" | "return";
 export type StoredAgreement = {
   id: string;
   borrowerUid: string;
@@ -20,6 +21,10 @@ export type StoredAgreement = {
   message: string;
   borrowerSignature?: StoredSignature;
   lenderSignature?: StoredSignature;
+  borrowerReturnSignature?: StoredSignature;
+  lenderReturnSignature?: StoredSignature;
+  returnedAt?: string;
+  returnCondition?: "good";
 };
 
 export async function saveCircleAgreement(agreement: StoredAgreement) {
@@ -38,9 +43,10 @@ export async function loadCircleAgreements(uid: string): Promise<StoredAgreement
   return (data.agreements ?? []).sort((a,b) => b.id.localeCompare(a.id));
 }
 
-export async function saveCircleSignature(id: string, role: "borrower" | "lender", signature: StoredSignature) {
+export async function saveCircleSignature(id: string, role: "borrower" | "lender", signature: StoredSignature, phase: SignaturePhase = "handover") {
   if (!auth?.currentUser) throw new Error("Du skal være logget ind.");
-  const response = await fetch("/api/agreements",{method:"PATCH",headers:{"content-type":"application/json",authorization:`Bearer ${await auth.currentUser.getIdToken()}`},body:JSON.stringify({id,role,signature})});
-  const data = await response.json() as {error?:string};
+  const response = await fetch("/api/agreements",{method:"PATCH",headers:{"content-type":"application/json",authorization:`Bearer ${await auth.currentUser.getIdToken()}`},body:JSON.stringify({id,role,phase,signature})});
+  const data = await response.json() as {error?:string;returnedAt?:string};
   if (!response.ok) throw new Error(data.error || "Underskriften kunne ikke gemmes.");
+  return data;
 }

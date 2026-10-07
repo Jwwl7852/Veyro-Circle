@@ -53,6 +53,8 @@ export async function POST(request:Request) {
     const participants = Array.isArray(agreement.participantUids) ? agreement.participantUids : [];
     if (!participants.includes(identity.localId) || participants.length < 1 || participants.length > 2) return error("Aftalens deltagere er ugyldige.");
     delete agreement.borrowerSignature; delete agreement.lenderSignature;
+    delete agreement.borrowerReturnSignature; delete agreement.lenderReturnSignature;
+    delete agreement.returnedAt; delete agreement.returnCondition;
     const now = new Date(); const retention = new Date(now); retention.setMonth(retention.getMonth()+12);
     const fields = Object.fromEntries(Object.entries({...agreement,createdAt:now.toISOString(),updatedAt:now.toISOString(),retentionUntil:retention.toISOString()}).map(([key,value])=>[key, key.endsWith("At") || key === "retentionUntil" ? {timestampValue:String(value)} : encode(value as JsonValue)]));
     const response = await fetch(firestoreDocumentUrl(`agreements/${agreement.id}`), {method:"PATCH",headers:{authorization:`Bearer ${await serviceToken()}`,"content-type":"application/json"},body:JSON.stringify({fields})});
@@ -64,18 +66,33 @@ export async function POST(request:Request) {
 export async function PATCH(request:Request) {
   try {
     const identity = await verifyFirebaseRequest(request);
-    const body = await request.json() as {id?:string;role?:"borrower"|"lender";signature?:JsonValue};
-    if (!body.id || !body.signature || !["borrower","lender"].includes(body.role ?? "")) return error("Underskriften er ugyldig.");
+    const body = await request.json() as {id?:string;role?:"borrower"|"lender";phase?:"handover"|"return";signature?:JsonValue};
+    if (!body.id || !body.signature || !["borrower","lender"].includes(body.role ?? "") || !["handover","return"].includes(body.phase ?? "handover")) return error("Underskriften er ugyldig.");
+    const signature = body.signature as Record<string,JsonValue>;
+    if (typeof signature.dataUrl !== "string" || !signature.dataUrl.startsWith("data:image/png;base64,") || signature.dataUrl.length > 400_000 || typeof signature.signedAt !== "string" || !Number.isFinite(Date.parse(signature.signedAt))) return error("Underskriftsdata er ugyldige.");
     const documentResponse = await fetch(firestoreDocumentUrl(`agreements/${body.id}`), {headers:{authorization:`Bearer ${await serviceToken()}`}});
     if (!documentResponse.ok) return error("Aftalen findes ikke.",404);
     const document = await documentResponse.json() as {fields?:Record<string,FirestoreValue>};
     const data = Object.fromEntries(Object.entries(document.fields ?? {}).map(([key,value])=>[key,decode(value)]));
     const expected = body.role === "borrower" ? data.borrowerUid : data.lenderUid;
     if (expected !== identity.localId) return error("Du kan kun underskrive som dig selv.",403);
-    const field = `${body.role}Signature`;
-    const url = `${firestoreDocumentUrl(`agreements/${body.id}`)}?updateMask.fieldPaths=${field}&updateMask.fieldPaths=updatedAt`;
-    const response = await fetch(url,{method:"PATCH",headers:{authorization:`Bearer ${await serviceToken()}`,"content-type":"application/json"},body:JSON.stringify({fields:{[field]:encode(body.signature),updatedAt:{timestampValue:new Date().toISOString()}}})});
+    const phase = body.phase ?? "handover";
+    if (phase === "return" && (!data.borrowerSignature || !data.lenderSignature)) return error("Begge parter skal underskrive udleveringen, før returkvitteringen kan underskrives.",409);
+    if (data.returnedAt) return error("Returkvitteringen er allerede afsluttet.",409);
+    const field = phase === "return" ? `${body.role}ReturnSignature` : `${body.role}Signature`;
+    if (data[field]) return error("Denne underskrift er allerede registreret.",409);
+    const now = new Date().toISOString();
+    const fields:Record<string,FirestoreValue> = {[field]:encode(body.signature),updatedAt:{timestampValue:now}};
+    const otherReturnField = body.role === "borrower" ? "lenderReturnSignature" : "borrowerReturnSignature";
+    const completedReturn = phase === "return" && Boolean(data[otherReturnField]);
+    if (completedReturn) {
+      fields.returnedAt = {timestampValue:now};
+      fields.returnCondition = {stringValue:"good"};
+    }
+    const masks = Object.keys(fields).map(key=>`updateMask.fieldPaths=${encodeURIComponent(key)}`).join("&");
+    const url = `${firestoreDocumentUrl(`agreements/${body.id}`)}?${masks}`;
+    const response = await fetch(url,{method:"PATCH",headers:{authorization:`Bearer ${await serviceToken()}`,"content-type":"application/json"},body:JSON.stringify({fields})});
     if (!response.ok) throw new Error("Underskriften kunne ikke gemmes.");
-    return NextResponse.json({ok:true});
+    return NextResponse.json({ok:true,...(completedReturn ? {returnedAt:now} : {})});
   } catch (cause) { return error(cause instanceof Error ? cause.message : "Underskriften kunne ikke gemmes.",500); }
 }

@@ -55,6 +55,20 @@ test("profiles use server-side duplicate control and agreement retention is 12 m
   assert.match(agreementsApi, /ARRAY_CONTAINS/);
 });
 
+test("return receipt requires both handover signatures and both parties", async () => {
+  const rules = await readFile(new URL("../firestore.rules", import.meta.url), "utf8");
+  const agreementsApi = await readFile(new URL("../app/api/agreements/route.ts", import.meta.url), "utf8");
+  const client = await readFile(new URL("../lib/firebase-agreements.ts", import.meta.url), "utf8");
+  assert.match(rules, /Aftaler og alle fire underskrifter skrives kun via den verificerede server-API/);
+  assert.match(agreementsApi, /phase === "return"/);
+  assert.match(agreementsApi, /borrowerSignature \|\| !data\.lenderSignature/);
+  assert.match(agreementsApi, /borrowerReturnSignature/);
+  assert.match(agreementsApi, /lenderReturnSignature/);
+  assert.match(agreementsApi, /fields\.returnedAt/);
+  assert.match(agreementsApi, /returnCondition = \{stringValue:"good"\}/);
+  assert.match(client, /SignaturePhase = "handover" \| "return"/);
+});
+
 test("Storage rules restrict image writes by uid, type and size", async () => {
   const rules = await readFile(new URL("../storage.rules", import.meta.url), "utf8");
   assert.match(rules, /request\.auth\.uid == uid/);

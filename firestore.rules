@@ -31,29 +31,8 @@ service cloud.firestore {
     }
     match /agreements/{agreementId} {
       allow read: if signedIn() && request.auth.uid in resource.data.participantUids;
-      allow create: if signedIn()
-        && request.resource.data.borrowerUid == request.auth.uid
-        && request.resource.data.participantUids.size() >= 1
-        && request.resource.data.participantUids.size() <= 2
-        && request.resource.data.borrowerUid in request.resource.data.participantUids
-        && (!request.resource.data.keys().hasAny(['lenderUid']) || (
-          request.resource.data.lenderUid is string
-          && request.resource.data.lenderUid != request.auth.uid
-          && request.resource.data.lenderUid in request.resource.data.participantUids
-        ))
-        && request.resource.data.retentionUntil is timestamp
-        && request.resource.data.retentionUntil > request.time
-        && !request.resource.data.keys().hasAny(['borrowerSignature', 'lenderSignature']);
-      allow update: if signedIn()
-        && request.auth.uid in resource.data.participantUids
-        && request.resource.data.borrowerUid == resource.data.borrowerUid
-        && request.resource.data.lenderUid == resource.data.lenderUid
-        && request.resource.data.participantUids == resource.data.participantUids
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          request.auth.uid == resource.data.borrowerUid ? 'borrowerSignature' : 'lenderSignature',
-          'updatedAt'
-        ]);
-      allow delete: if false;
+      // Aftaler og alle fire underskrifter skrives kun via den verificerede server-API.
+      allow create, update, delete: if false;
 
       match /messages/{messageId} {
         function participant() {

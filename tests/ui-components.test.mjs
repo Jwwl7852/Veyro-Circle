@@ -71,6 +71,10 @@ test("agreement offers separate account storage and a standalone print document"
   assert.match(page, /crypto\.randomUUID\(\)/);
   assert.match(page, /Ticket:/);
   assert.match(page, /formatAgreementDate/);
+  assert.match(page, /Returkvittering/);
+  assert.match(page, /Tilbageleveret i god stand/);
+  assert.match(page, /borrowerReturnSignature/);
+  assert.match(page, /lenderReturnSignature/);
 });
 
 test("forwards progress semantics to the primitive", async () => {

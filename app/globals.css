@@ -267,8 +267,19 @@ button:focus-visible,a:focus-visible { outline:3px solid #819eb6; outline-offset
 .paper-signature-line { display:none; margin-top:auto; border-top:1px solid #526071; padding-top:.3rem; color:#526071; font-size:.72rem; }
 .signature-script { margin-top:auto; font-family:cursive; font-size:1.45rem; color:#006F88; }
 .agreement-signatures time { color:#526071; font-size:.75rem; }
+.signature-waiting { margin:auto 0; border-radius:.45rem; background:#f2f5f7; padding:.8rem; color:#647480; font-size:.8rem; text-align:center; }
 .agreement-legal { display:flex; gap:.5rem; margin-top:1rem; padding:.75rem; border-left:3px solid #d79a17; background:#fff7df; color:#5c4b1f; font-size:.75rem; line-height:1.5; }
 .agreement-legal svg { flex:none; margin-top:.1rem; }
+.return-receipt { margin-top:1.2rem; border:1px solid #7eb7c2; border-radius:.6rem; padding:1rem; background:#f2fbfc; }
+.return-receipt>header { display:flex; align-items:center; justify-content:space-between; gap:1rem; }
+.return-receipt>header h3 { font-size:1.05rem; font-weight:800; }
+.return-receipt>header>span { display:inline-flex; align-items:center; gap:.35rem; border-radius:999px; background:#16866b; padding:.35rem .65rem; color:white; font-size:.76rem; font-weight:800; }
+.return-receipt>p { margin-top:.6rem; color:#425967; font-size:.82rem; line-height:1.55; }
+.return-receipt.is-complete { border-color:#70aa90; background:#eef9f3; }
+.return-locked { display:flex; align-items:flex-start; gap:.45rem; border-left:3px solid #d88920; background:#fff7df; padding:.65rem; color:#674b14!important; }
+.return-locked svg { flex:none; margin-top:.1rem; }
+.return-completed-at { font-weight:750; color:#147154!important; }
+.return-signatures { margin-top:.8rem; }
 .agreement-actions { display:flex; align-items:center; justify-content:space-between; gap:1rem; }
 .agreement-actions span { color:#526071; font-size:.8rem; font-weight:700; }
 .agreement-choice-buttons { display:flex; flex-wrap:wrap; gap:.65rem; }
