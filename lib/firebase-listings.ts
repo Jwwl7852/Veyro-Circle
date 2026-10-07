@@ -1,7 +1,6 @@
 "use client";
 
-import { collection, onSnapshot } from "firebase/firestore";
-import { auth, db } from "@/lib/firebase-client";
+import { auth } from "@/lib/firebase-client";
 import { deleteListingImage, uploadListingImage } from "@/lib/firebase-storage";
 import type { CompressedListingImage } from "@/lib/image-compression";
 import type { Country, Place } from "@/lib/marketplace";
@@ -20,6 +19,9 @@ export type CircleListingRecord = {
   deposit: number;
   photos: CompressedListingImage[];
   active: boolean;
+  publishable?:boolean;
+  details?:Record<string,string>;
+  createdAt?:string;
 };
 
 export type CircleListingDraft = Omit<CircleListingRecord, "ownerUid" | "owner" | "active">;
@@ -45,19 +47,29 @@ function cleanRecord(id: string, value: Record<string, unknown>): CircleListingR
     dailyPrice:typeof value.dailyPrice === "number" ? value.dailyPrice : 0,
     deposit:typeof value.deposit === "number" ? value.deposit : 0,
     photos:photos.slice(0, 2),
-    active:true,
+    active:true,publishable:value.publishable===true,
+    details:typeof value.details === "object" && value.details ? value.details as Record<string,string> : {},
+    createdAt:typeof value.createdAt === "string" ? value.createdAt : value.createdAt && typeof value.createdAt === "object" && "toDate" in value.createdAt ? (value.createdAt as {toDate:()=>Date}).toDate().toISOString() : "",
   };
 }
 
 export function subscribeToCircleListings(onChange: (listings: CircleListingRecord[]) => void, onError: (error: Error) => void) {
-  if (!db) throw new Error("Firebase Firestore er ikke konfigureret");
-  return onSnapshot(collection(db, "listings"), snapshot => {
-    const listings = snapshot.docs.flatMap(document => {
-      const record = cleanRecord(document.id, document.data());
-      return record ? [record] : [];
-    });
-    onChange(listings);
-  }, error => onError(error));
+  let disposed=false,busy=false;
+  const refresh=async()=>{
+    if(disposed||busy)return;busy=true;
+    try {
+      const headers:Record<string,string>={};
+      if(auth?.currentUser?.emailVerified)headers.authorization=`Bearer ${await auth.currentUser.getIdToken()}`;
+      const response=await fetch("/api/listings/feed",{cache:"no-store",headers});
+      if(!response.ok)throw Error("Annoncerne kunne ikke hentes.");
+      const data=await response.json() as {listings:Array<Record<string,unknown>&{id:string}>};
+      if(!disposed)onChange(data.listings.flatMap(item=>{const record=cleanRecord(item.id,item);return record?[record]:[];}));
+    }catch(cause){if(!disposed)onError(cause instanceof Error?cause:Error("LISTINGS_UNAVAILABLE"));}finally{busy=false;}
+  };
+  const visible=()=>{if(document.visibilityState==="visible")void refresh();};
+  void refresh();const timer=setInterval(visible,15000);
+  window.addEventListener("circle:listings-changed",visible);window.addEventListener("focus",visible);
+  return()=>{disposed=true;clearInterval(timer);window.removeEventListener("circle:listings-changed",visible);window.removeEventListener("focus",visible);};
 }
 
 async function authorizedFetch(input: string, init: RequestInit) {
@@ -68,6 +80,7 @@ async function authorizedFetch(input: string, init: RequestInit) {
   });
   const data = await response.json() as { error?:string };
   if (!response.ok) throw new Error(data.error || "Annoncen kunne ikke gemmes.");
+  window.dispatchEvent(new Event("circle:listings-changed"));
   return data;
 }
 

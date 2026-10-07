@@ -79,3 +79,16 @@ export async function POST(request: Request) {
     return error(message, message.includes("logget") || message.includes("session") ? 401 : 500);
   }
 }
+
+// Language selection updates only this preference, never contact, identity or billing fields.
+export async function PATCH(request:Request) {
+  let identity;try{identity=await verifyFirebaseRequest(request);}catch{return error("AUTH_REQUIRED",401);}
+  try {
+    const {preferredLanguage}=await request.json();
+    if(!["da","sv"].includes(preferredLanguage))return error("INVALID_LANGUAGE");
+    const path=`users/${identity.localId}`;
+    if(!await getFirestoreDocument(path))return error("PROFILE_REQUIRED",404);
+    await commitFirestoreWrites([{update:{name:firestoreDocumentName(path),fields:{preferredLanguage:text(preferredLanguage),updatedAt:timestamp(new Date().toISOString())}},updateMask:{fieldPaths:["preferredLanguage","updatedAt"]},currentDocument:{exists:true}}]);
+    return NextResponse.json({ok:true},{headers:{"cache-control":"private, no-store"}});
+  }catch{return error("LANGUAGE_SAVE_FAILED",409);}
+}

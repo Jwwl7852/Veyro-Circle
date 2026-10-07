@@ -1,13 +1,24 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import { ListingReviews,ReviewForm } from "@/components/circle-reviews";
+import { WantedBoard } from "@/components/wanted-board";
+import { AgreementExtension } from "@/components/agreement-extension";
+import { validTime,type AgreementSchedule } from "@/lib/agreement-schedule";
+import { SavedSearches } from "@/components/saved-searches";
+import { communityFetch } from "@/lib/community-client";
+import { matchesSearch,type Preferences,type SearchFilter } from "@/lib/discovery";
+import { detailFields } from "@/lib/listing-details";
+import { ListingCalendar } from "@/components/listing-calendar";
+import { loadAvailability } from "@/lib/firebase-calendar";
+import { validPeriod, type Period } from "@/lib/listing-calendar";
 import { PushSettings } from "@/components/push-settings";
 import { CircleAuthScreen, EmailVerificationScreen, FirebaseSetupNotice, circleSignOut, useCircleAuth } from "@/components/circle-auth";
-import { loadCircleProfile, saveCircleProfile } from "@/lib/firebase-profile";
+import { loadCircleProfile, saveCircleProfile, saveCircleLanguage } from "@/lib/firebase-profile";
 import { agreementsChanged, loadBookedPeriods, loadCircleAgreements, saveCircleAgreement, saveCircleAgreementNote, saveCircleSignature, updateCircleAgreement, type SignaturePhase, type StoredAgreement } from "@/lib/firebase-agreements";
 import { agreementErrorText, agreementNotices, agreementStage, circleToday, decisionAllowed, isArchived, noticeLabels, overlaps, stageLabels, type AgreementNotice, type Decision, type WorkflowAgreement } from "@/lib/agreement-workflow";
 import { sendCircleMessage, subscribeToCircleMessages, type CircleMessage } from "@/lib/firebase-messages";
-import { deleteCircleListing, loadCircleListingContact, saveCircleListing, subscribeToCircleListings, type CircleListingRecord } from "@/lib/firebase-listings";
+import { deleteCircleListing, saveCircleListing, subscribeToCircleListings, type CircleListingRecord } from "@/lib/firebase-listings";
 import { openBilling } from "@/lib/billing-client";
 import { PlacePicker, CountrySelect, ProfileForm } from "@/components/marketplace-fields";
 import { CommunityMap } from "@/components/community-map";
@@ -16,14 +27,14 @@ import { agreementSigning, displayedAgreementNote, type NoteEdit } from "@/lib/a
 import { parseDeposit } from "@/lib/marketplace";
 import { AgreementPhotos as AgreementPhotoPanel } from "@/components/agreement-photos";
 import { phasePhotos, photoVersion, type AgreementPhotos, type AgreementPhoto } from "@/lib/agreement-photos";
-import { type Place, type Profile, type Country, type ListingPlan, distanceKm, defaultPlace, parseDailyPrice, money, dayCount, todayLocal, canCreateListing, listingLimit, FREE_LISTING_LIMIT, PLUS_LISTING_LIMIT } from "@/lib/marketplace";
+import { type Place, type Profile, type Country, type ListingPlan, distanceKm, places,parseDailyPrice, money, dayCount, todayLocal, canCreateListing, listingLimit, PLUS_LISTING_LIMIT } from "@/lib/marketplace";
 import { compressListingImage, formatImageSize, MAX_LISTING_IMAGES, type CompressedListingImage } from "@/lib/image-compression";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Bell, Bike, CalendarDays, Camera, Check, ChevronDown, CircleUserRound, Drill,
   SprayCan, Heart, Home, ImagePlus, Languages, MapPin, Map as MapIcon, MessageCircle,
-  PackagePlus, PartyPopper, Pencil, Search, ShieldCheck, Sparkles, Star, TentTree,
+  PackagePlus, PartyPopper, Pencil, Search, ShieldCheck, Sparkles, TentTree,
   Trash2, Truck, Utensils, Wrench, X, Crown, FileSignature, Printer, LockKeyhole,
   LogOut, LoaderCircle, Send, Save, RefreshCw,
 } from "lucide-react";
@@ -39,14 +50,14 @@ import {
 } from "@/components/ui/alert-dialog";
 
 type Lang = "da" | "sv";
-type Tab = "home" | "map" | "items" | "requests" | "profile" | "subscription";
+type Tab = "wanted" | "home" | "map" | "items" | "requests" | "profile" | "subscription";
 type AgreementSignature = { dataUrl: string; signedAt: string };
-type Loan = WorkflowAgreement & AgreementPhotos & { id: string; item: Listing; from: string; to: string; days: number; total: number; deposit: number; message: string; handoverNote?: string; returnNote?: string; borrower: Profile; borrowerUid?: string; lenderUid?: string; borrowerSignature?: AgreementSignature; lenderSignature?: AgreementSignature; borrowerReturnSignature?: AgreementSignature; lenderReturnSignature?: AgreementSignature; returnedAt?: string; returnCondition?: "good" | "remarks"; saved?: boolean };
+type Loan = WorkflowAgreement & AgreementPhotos & AgreementSchedule & { id: string; item: Listing; from: string; to: string; days: number; total: number; deposit: number; message: string; handoverNote?: string; returnNote?: string; borrower: Profile; borrowerUid?: string; lenderUid?: string; borrowerSignature?: AgreementSignature; lenderSignature?: AgreementSignature; borrowerReturnSignature?: AgreementSignature; lenderReturnSignature?: AgreementSignature; returnedAt?: string; returnCondition?: "good" | "remarks"; saved?: boolean };
 type Listing = {
   id: string; name: string; owner: string; city: string; country: "DK" | "SE";
   ownerStreet: string; ownerPhone: string; ownerUid?: string;
   distance: number; category: string; icon: typeof Drill; color: string;
-  description: string; rating: number; availability: string;
+  publishable?:boolean;description: string; details?:Record<string,string>;createdAt?:string; rating: number; availability: string;
   place: Place; dailyPrice: number; deposit?:number; photos?: CompressedListingImage[]; owned?: boolean;
 };
 
@@ -80,6 +91,7 @@ function listingFromCloud(record: CircleListingRecord, currentUid: string): List
     distance:0,
     icon:category?.icon ?? PackagePlus,
     color:categoryColors[record.category] ?? categoryColors.tools,
+    details:record.details,createdAt:record.createdAt,
     rating:0,
     availability:"",
     owned:record.ownerUid === currentUid,
@@ -128,6 +140,27 @@ const copy = {
 export default function HomePage() {
   const { user, loading: authLoading, configured } = useCircleAuth();
   const [lang, setLang] = useState<Lang>("da");
+  const [languageSaving,setLanguageSaving]=useState(false);
+  const reportProfileError=useEffectEvent(()=>toast.error(lang === "da" ? "Profilen kunne ikke hentes fra Firebase." : "Profilen kunde inte hämtas från Firebase."));
+  async function changeLanguage(next:Lang) {
+    if(languageSaving)return;
+    setLang(next);
+    if(!user?.emailVerified)return;
+    setLanguageSaving(true);
+    try{await saveCircleLanguage(user,next);}catch{toast.error(next==="da"?"Sproget er skiftet, men kunne ikke gemmes på kontoen. Prøv igen.":"Språket har ändrats men kunde inte sparas på kontot. Försök igen.");}finally{setLanguageSaving(false);}
+  }
+  useEffect(()=>{document.documentElement.lang=lang;},[lang]);
+  const [prefs,setPrefs]=useState<Preferences>({favorites:[],searches:[]});
+  const [onlyFavorites,setOnlyFavorites]=useState(false);
+  const [favoriteBusy,setFavoriteBusy]=useState<string|null>(null);
+  const [authOpen,setAuthOpen]=useState(false);
+  const [calendarItem,setCalendarItem]=useState<Listing|null>(null);
+  const [searchFrom,setSearchFrom]=useState("");
+  const [searchTo,setSearchTo]=useState("");
+  const [dateResults,setDateResults]=useState<{key:string;periods:Record<string,Period[]|null>;error:boolean}>({key:"",periods:{},error:false});
+  const [calendarRevision,setCalendarRevision]=useState(0);
+  const [listingsLoading,setListingsLoading]=useState(true);
+  const [listingsError,setListingsError]=useState(false);
   const [tab, setTab] = useState<Tab>("home");
   useEffect(()=>{
     if(!user?.emailVerified) return;
@@ -142,14 +175,17 @@ export default function HomePage() {
   const [showRequest, setShowRequest] = useState(false);
   const [newName, setNewName] = useState("");
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [origin, setOrigin] = useState<Place | null>(defaultPlace);
-  const [radius, setRadius] = useState("100");
+  const [origin, setOrigin] = useState<Place | null>(null);
+  const [radius, setRadius] = useState("all");
   const [priceFilter, setPriceFilter] = useState("all");
   const [newCountry, setNewCountry] = useState<Country>("DK");
   const [newPlace, setNewPlace] = useState<Place | null>(null);
+  const [newDetails,setNewDetails]=useState<Record<string,string>>({});
   const [newCategory, setNewCategory] = useState("tools");
   const [pricing, setPricing] = useState("free");
   const [priceInput, setPriceInput] = useState("");
+  const [pickupTime,setPickupTime]=useState("10:00");
+  const [returnTime,setReturnTime]=useState("17:00");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [requestMessage, setRequestMessage] = useState("");
@@ -198,7 +234,7 @@ export default function HomePage() {
   const requestSent = awaitingCount > 0;
   const t = copy[lang];
   const days = dayCount(from, to);
-  const dateValid = days !== null && from >= todayLocal();
+  const dateValid = days !== null && from >= todayLocal() && validTime(pickupTime) && validTime(returnTime) && (from!==to || returnTime>pickupTime);
 
   useEffect(()=>{
     if (!showRequest || !selected?.id) return;
@@ -234,13 +270,13 @@ export default function HomePage() {
       if (!active) return;
       if (cloud) {
         const next = { name: cloud.name, email: user.email || cloud.email, phone: cloud.phone, street: cloud.street, place: cloud.place, taxAcknowledgement: cloud.taxAcknowledgement };
-        setProfile(next); setLang(cloud.preferredLanguage); setOrigin(cloud.place); setNewPlace(cloud.place); setNewCountry(cloud.place.country);
+        setProfile(next); setLang(cloud.preferredLanguage); setOrigin(cloud.place);setRadius("100"); setNewPlace(cloud.place); setNewCountry(cloud.place.country);
         setListingPlan(cloud.subscriptionPlan === "plus" ? "plus" : "free");
       } else setTab("profile");
-    }).catch(() => toast.error(lang === "da" ? "Profilen kunne ikke hentes fra Firebase." : "Profilen kunde inte hämtas från Firebase."))
+    }).catch(() => reportProfileError())
       .finally(() => active && setProfileLoading(false));
     return () => { active = false; };
-  }, [configured, lang, user?.email, user?.emailVerified, user?.uid]);
+  }, [configured, user?.email, user?.emailVerified, user?.uid]);
 
   useEffect(() => {
     if (!configured || !user?.emailVerified) return;
@@ -283,33 +319,70 @@ export default function HomePage() {
   }, [configured, user?.emailVerified, user?.uid]);
 
   useEffect(() => {
-    if (!configured || !user?.emailVerified) return;
+    if (!configured) return;
     return subscribeToCircleListings(records => {
-      setListings(records.map(record => ({...listingFromCloud(record, user.uid),availability:lang === "da" ? "Forespørg om datoer" : "Fråga om datum"})));
+      setListingsLoading(false);setListingsError(false);
+      const linkedId=new URLSearchParams(window.location.search).get("listing");
+      if(linkedId){const linked=records.find(r=>r.id===linkedId);if(linked){setSelected(listingFromCloud(linked,user?.uid??""));window.history.replaceState(null,"",window.location.pathname);}}
+      setListings(records.map(record => ({...listingFromCloud(record, user?.uid ?? ""),availability:lang === "da" ? "Forespørg om datoer" : "Fråga om datum"})));
     }, error => {
+      setListingsLoading(false);setListingsError(true);
       console.error("Circle listings could not be loaded", error);
       toast.error(lang === "da" ? "Annoncerne kunne ikke hentes fra Firebase." : "Annonserna kunde inte hämtas från Firebase.");
     });
   }, [configured, lang, user?.emailVerified, user?.uid]);
 
-  const filtered = useMemo(() => {
+  const nearby = useMemo(() => {
     if (!origin && radius !== "all") return [];
     const q = query.trim().toLowerCase();
     return listings.map(item => ({ ...item, distance: origin ? distanceKm(origin, item.place) : NaN })).filter(item =>
-      (country === "ALL" || item.country === country) &&
+      item.publishable!==false && (country === "ALL" || item.country === country) &&
       (category === "all" || item.category === category) &&
       (radius === "all" || item.distance <= Number(radius)) &&
       (priceFilter === "all" || (priceFilter === "free" ? item.dailyPrice === 0 : item.dailyPrice > 0)) &&
+      (!onlyFavorites || prefs.favorites.includes(item.id)) &&
       (!q || `${item.name} ${item.city} ${item.description}`.toLowerCase().includes(q))
     ).sort((a,b) => origin ? a.distance - b.distance : a.id.localeCompare(b.id));
-  }, [category, country, listings, query, origin, radius, priceFilter]);
+  }, [category, country, listings, query, origin, radius, priceFilter,onlyFavorites,prefs.favorites]);
+
+  const datesEntered=Boolean(searchFrom || searchTo);
+  const searchDatesValid=validPeriod(searchFrom,searchTo,today);
+  const searchDays=searchDatesValid ? dayCount(searchFrom,searchTo) : null;
+  const candidateIds=nearby.map(item=>item.id).join(",");
+  const availabilityKey=`${candidateIds}|${searchFrom}|${searchTo}|${calendarRevision}`;
+  const datePending=datesEntered && searchDatesValid && dateResults.key!==availabilityKey;
+  const dateFailed=datesEntered && dateResults.key===availabilityKey && dateResults.error;
+  const filtered=datesEntered ? (!searchDatesValid || datePending || dateFailed ? [] : nearby.filter(item=>Array.isArray(dateResults.periods[item.id]) && !dateResults.periods[item.id]!.some(period=>overlaps(period,{from:searchFrom,to:searchTo})))) : nearby;
+  useEffect(()=>{
+    const changed=()=>setCalendarRevision(v=>v+1);
+    window.addEventListener("circle:calendar-changed",changed);
+    window.addEventListener("circle:agreements-changed",changed);
+    return()=>{window.removeEventListener("circle:calendar-changed",changed);window.removeEventListener("circle:agreements-changed",changed);};
+  },[]);
+  useEffect(()=>{
+    if(!searchDatesValid || !datesEntered)return;
+    const controller=new AbortController();
+    const timer=setTimeout(()=>{void loadAvailability(candidateIds ? candidateIds.split(",") : [],controller.signal).then(periods=>{if(!controller.signal.aborted)setDateResults({key:availabilityKey,periods,error:false});}).catch(()=>{if(!controller.signal.aborted)setDateResults({key:availabilityKey,periods:{},error:true});});},250);
+    return()=>{controller.abort();clearTimeout(timer);};
+  },[availabilityKey,candidateIds,searchDatesValid,datesEntered]);
+  useEffect(()=>{
+    if(!user?.emailVerified)return;let active=true;
+    communityFetch("/api/preferences").then(p=>{if(active)setPrefs(p);}).catch(()=>undefined);
+    return()=>{active=false;};
+  },[user?.uid,user?.emailVerified]);
+  const savedFilter:SearchFilter={query,country,category,price:priceFilter,radius,placeId:origin?.id??""};
+  const savedMatches=prefs.searches.filter(s=>s.alerts).reduce((sum,s)=>sum+listings.filter(i=>!i.owned&&i.createdAt&&i.createdAt>s.seenThrough&&matchesSearch(s,i)).length,0);
+  function applySearch(filter:SearchFilter){setQuery(filter.query);setCountry(filter.country as "ALL"|"DK"|"SE");setCategory(filter.category);setPriceFilter(filter.price);setRadius(filter.radius);setOrigin(places.find(p=>p.id===filter.placeId)??null);setSearchFrom("");setSearchTo("");setOnlyFavorites(false);setTab("home");setNotificationsOpen(false);}
+  async function favorite(item:Listing){if(!user){setAuthOpen(true);return;}setFavoriteBusy(item.id);try{setPrefs(await communityFetch("/api/preferences",{action:"favorite",id:item.id,enabled:!prefs.favorites.includes(item.id)}));}catch{toast.error(lang==="da"?"Favoritten kunne ikke gemmes. Prøv igen.":"Favoriten kunde inte sparas. Försök igen.");}finally{setFavoriteBusy(null);}}
+  function navigate(next:Tab) {if(!user && next!=="home" && next!=="wanted"){setAuthOpen(true);return;}setTab(next);}
 
   function resetItemForm() {
-    setEditingId(null); setNewName(""); setNewDescription(""); setNewCategory("tools");
+    setEditingId(null); setNewName(""); setNewDescription(""); setNewCategory("tools");setNewDetails({});
     setPricing("free"); setPriceInput(""); setNewDepositInput(""); setNewPhotos([]); setFormError("");
   }
 
   function openAdd() {
+    if(!user){setAuthOpen(true);return;}
     if (!profile) { setTab("profile"); toast.info(lang === "da" ? "Opret først din profil med adresse og by." : "Skapa först din profil med adress och ort."); return; }
     const activeCount = listings.filter(item => item.owned).length;
     if (!canCreateListing(activeCount, listingPlan)) {
@@ -322,8 +395,9 @@ export default function HomePage() {
 
   function openEdit(item: Listing) {
     if (!item.owned) return;
+    if(listingPlan!=="plus"){setSelected(null);setShowUpgrade(true);return;}
     setSelected(null); setEditingId(item.id); setNewName(item.name); setNewDescription(item.description);
-    setNewCategory(item.category); setNewCountry(item.country); setNewPlace(item.place);
+    setNewCategory(item.category);setNewDetails(item.details??{}); setNewCountry(item.country); setNewPlace(item.place);
     setPricing(item.dailyPrice > 0 ? "paid" : "free");
     setPriceInput(item.dailyPrice > 0 ? String(item.dailyPrice / 100).replace(".", lang === "da" ? "," : ".") : "");
     setNewDepositInput(item.deposit ? String(item.deposit/100).replace(".",",") : "");
@@ -340,7 +414,7 @@ export default function HomePage() {
 
   async function logout() {
     if (configured) await circleSignOut();
-    setProfile(null); setLoans([]); setAgreementLoan(null); setChatLoan(null); setNotificationsOpen(false); setListingPlan("free"); setOrigin(defaultPlace); setTab("profile");
+    setPrefs({favorites:[],searches:[]});setOnlyFavorites(false);setProfile(null); setLoans([]); setAgreementLoan(null); setChatLoan(null); setNotificationsOpen(false); setListingPlan("free"); setOrigin(null); setRadius("all");setTab("home");setAuthOpen(false);
     toast.success(lang === "da" ? "Du er logget ud." : "Du har loggats ut.");
   }
 
@@ -389,7 +463,7 @@ export default function HomePage() {
     const update = {
       id, city: newPlace.city,
       country: newCountry, place: newPlace, dailyPrice: amount, deposit, category: newCategory,
-      description: newDescription || (lang === "da" ? "Til udlån efter aftale." : "För utlåning enligt överenskommelse."),
+      details:newDetails,description: newDescription || (lang === "da" ? "Til udlån efter aftale." : "För utlåning enligt överenskommelse."),
       photos: newPhotos, name:newName.trim(),
     };
     setListingSaving(true); setFormError("");
@@ -419,11 +493,12 @@ export default function HomePage() {
   }
 
   function openRequest() {
+    if(!user){setAuthOpen(true);return;}
     if (!profile) { setSelected(null); setTab("profile"); toast.info(lang === "da" ? "Opret først din profil med adresse og by." : "Skapa först din profil med adress och ort."); return; }
     const today = todayLocal();
     requestTicket.current = null;
     setBookedPeriods([]);setAvailabilityError(false);
-    setFrom(today); setTo(today); setFormError(""); setRequestMessage(""); setShowRequest(true);
+    setPickupTime("10:00");setReturnTime("17:00");setFrom(searchDatesValid?searchFrom:today); setTo(searchDatesValid?searchTo:today); setFormError(""); setRequestMessage(""); setShowRequest(true);
   }
 
   async function sendRequest() {
@@ -433,11 +508,10 @@ export default function HomePage() {
     const deposit = selected.deposit ?? 0;
     setRequestPreparing(true); setFormError("");
     try {
-      const contact = await loadCircleListingContact(selected.id);
       const ticket = requestTicket.current ?? `VC-${new Date().getFullYear()}-${crypto.randomUUID().replaceAll("-", "").slice(0, 12).toUpperCase()}`;
       requestTicket.current = ticket;
-      const item = {...selected,owner:contact.name,ownerStreet:contact.street,ownerPhone:contact.phone,place:contact.place};
-      const loan: Loan = {id: ticket, item, from, to, days, total: selected.dailyPrice * days, deposit, message: requestMessage.trim(), borrower: profile, borrowerUid: user?.uid, lenderUid: selected.ownerUid};
+      const item = {...selected,ownerStreet:"",ownerPhone:""};
+      const loan: Loan = {id: ticket, item, from, to, pickupTime,returnTime,days, total: selected.dailyPrice * days, deposit, message: requestMessage.trim(), borrower: profile, borrowerUid: user?.uid, lenderUid: selected.ownerUid};
       const stored = await saveCircleAgreement(agreementForCloud(loan));
       const saved = agreementFromCloud(stored);
       setLoans(items=>[saved, ...items.filter(item=>item.id !== saved.id)]);
@@ -470,7 +544,7 @@ export default function HomePage() {
     const busyKey = `${loan.id}-${phase}-${role}`;
     setSignatureBusy(busyKey);
     try {
-      const result: {returnedAt?:string;returnCondition?:"good"|"remarks"} = loan.saved ? await saveCircleSignature(loan.id, role, signature, phase, phase === "handover" ? loan.handoverNote ?? "" : loan.returnNote ?? "", phasePhotos(loan,phase).map(p=>p.id)) : {};
+      const result: {returnedAt?:string;returnCondition?:"good"|"remarks"} = loan.saved ? await saveCircleSignature(loan.id, role, signature, phase, phase === "handover" ? loan.handoverNote ?? "" : loan.returnNote ?? "", phasePhotos(loan,phase).map(p=>p.id),loan.to) : {};
       const updated = { ...loan, [field]:signature, ...(result.returnedAt ? {returnedAt:result.returnedAt,returnCondition:(result.returnCondition ?? "good")} : {}) };
       setLoans(items => items.map(item => item.id === loan.id ? updated : item));
       setAgreementLoan(updated);
@@ -549,7 +623,7 @@ export default function HomePage() {
 
   if (!configured) return <main className="auth-page"><FirebaseSetupNotice lang={lang} /></main>;
   if (authLoading || (configured && user?.emailVerified && profileLoading)) return <main className="auth-page"><img className="auth-brand-logo" src="/branding/veyro-systems-logo.png" alt="Veyro Systems" /><p>{lang === "da" ? "Indlæser Veyro Circle…" : "Laddar Veyro Circle…"}</p></main>;
-  if (configured && !user) return <CircleAuthScreen lang={lang} setLang={setLang} />;
+  if (configured && !user && authOpen) return <CircleAuthScreen lang={lang} setLang={setLang} onBrowse={()=>setAuthOpen(false)} />;
   if (configured && user && !user.emailVerified) return <EmailVerificationScreen user={user} lang={lang} />;
 
   return (
@@ -561,11 +635,11 @@ export default function HomePage() {
             <img src="/branding/veyro-systems-logo.png" alt="Veyro Systems" /><span>Circle</span>
           </button>
           <div className="ml-auto flex items-center gap-2">
-            <button className="icon-button notification-bell" onClick={()=>setNotificationsOpen(true)} aria-label={`${lang === "da" ? "Notifikationer" : "Aviseringar"} · ${unreadCount} ${lang === "da" ? "ulæste" : "olästa"}`}><Bell size={20} />{unreadCount > 0 && <b>{unreadCount > 99 ? "99+" : unreadCount}</b>}</button>
-            <button className="language-button" onClick={() => setLang(lang === "da" ? "sv" : "da")}>
+            <button className="icon-button notification-bell" onClick={()=>user?setNotificationsOpen(true):setAuthOpen(true)} aria-label={`${lang === "da" ? "Notifikationer" : "Aviseringar"} · ${unreadCount} ${lang === "da" ? "ulæste" : "olästa"}`}><Bell size={20} />{unreadCount > 0 && <b>{unreadCount > 99 ? "99+" : unreadCount}</b>}</button>
+            <button className="language-button" disabled={languageSaving} aria-label={lang === "da" ? "Skift til svensk" : "Byt till danska"} onClick={() => void changeLanguage(lang === "da" ? "sv" : "da")}>
               <Languages size={18} /><span>{lang === "da" ? "DA" : "SV"}</span><ChevronDown size={15} />
             </button>
-            <button className="hidden h-10 items-center gap-2 rounded-full bg-[#172936] px-4 text-sm font-semibold text-white sm:flex" onClick={() => setTab("profile")}>
+            <button className="flex min-h-11 items-center gap-2 rounded-full bg-[#172936] px-3 text-sm font-semibold text-white" onClick={() => navigate("profile")}>
               <CircleUserRound size={18} />{profile ? profile.name.split(" ")[0] : (lang === "da" ? "Log ind / opret" : "Logga in / skapa")}
             </button>
           </div>
@@ -577,10 +651,11 @@ export default function HomePage() {
           <div className="sticky top-24 space-y-6">
             <nav className="space-y-1" aria-label="Hovedmenu">
               <SideNav icon={Home} label={t.navHome} active={tab === "home"} onClick={() => setTab("home")} />
-              <SideNav icon={MapIcon} label={lang === "da" ? "Kort" : "Karta"} active={tab === "map"} onClick={() => setTab("map")} />
-              <SideNav icon={ImagePlus} label={t.navItems} active={tab === "items"} onClick={() => setTab("items")} />
-              <SideNav icon={CalendarDays} label={t.navRequests} active={tab === "requests"} badge={awaitingCount ? String(awaitingCount) : undefined} onClick={() => setTab("requests")} />
-              <SideNav icon={CircleUserRound} label={t.navProfile} active={tab === "profile"} onClick={() => setTab("profile")} />
+              <SideNav icon={Search} label={lang === "da" ? "Jeg søger" : "Jag söker"} active={tab === "wanted"} onClick={() => navigate("wanted")} />
+              <SideNav icon={MapIcon} label={lang === "da" ? "Kort" : "Karta"} active={tab === "map"} onClick={() => navigate("map")} />
+              <SideNav icon={ImagePlus} label={t.navItems} active={tab === "items"} onClick={() => navigate("items")} />
+              <SideNav icon={CalendarDays} label={t.navRequests} active={tab === "requests"} badge={awaitingCount ? String(awaitingCount) : undefined} onClick={() => navigate("requests")} />
+              <SideNav icon={CircleUserRound} label={t.navProfile} active={tab === "profile"} onClick={() => navigate("profile")} />
             </nav>
             <Button className="h-12 w-full rounded-xl bg-[#008EAC] text-[15px] font-bold text-white hover:bg-[#006F88]" onClick={openAdd}>
               <PackagePlus className="mr-2" size={19} />{t.addItem}
@@ -595,6 +670,7 @@ export default function HomePage() {
 
         <section className="min-w-0">
           {tab === "home" && <>
+            {!user && <p className="guest-intro">{lang === "da" ? "Se ting i nærheden uden en konto. Log ind, når du vil låne, leje eller dele." : "Se saker i närheten utan konto. Logga in när du vill låna, hyra eller dela."}</p>}
             <section className="hero-card">
               <img src="/assets/neighbours-sharing.webp" alt="Naboer deler værktøj og trailer" />
               <div className="hero-overlay" />
@@ -633,6 +709,15 @@ export default function HomePage() {
                   </Select>
                 </div>
               </div>
+              <div className="date-search-row">
+                <label>{lang === "da" ? "Fra dato" : "Från datum"}<input type="date" min={today} value={searchFrom} onChange={e=>setSearchFrom(e.target.value)} /></label>
+                <label>{lang === "da" ? "Til dato" : "Till datum"}<input type="date" min={searchFrom||today} value={searchTo} onChange={e=>setSearchTo(e.target.value)} /></label>
+                {datesEntered && <button onClick={()=>{setSearchFrom("");setSearchTo("");}}>{lang === "da" ? "Ryd datoer" : "Rensa datum"}</button>}
+              </div>
+              <p className="search-date-help">{lang === "da" ? "Vælg datoer for at se ting uden kendte reservationer eller blokeringer. Ejeren skal godkende. Begge datoer tæller med i prisen." : "Välj datum för att se saker utan kända bokningar eller blockeringar. Ägaren måste godkänna. Båda datumen räknas i priset."}</p>
+              {datesEntered && !searchDatesValid && <p role="status">{lang === "da" ? "Vælg begge datoer fra i dag, højst 366 dage og inden for de næste to år." : "Välj båda datumen från i dag, högst 366 dagar och inom de kommande två åren."}</p>}
+              {datePending && <p role="status">{lang === "da" ? "Kontrollerer ledige datoer…" : "Kontrollerar lediga datum…"}</p>}
+              {dateFailed && <p role="alert">{lang === "da" ? "Ledighed kunne ikke kontrolleres. Prøv igen eller ryd datoerne." : "Tillgängligheten kunde inte kontrolleras. Försök igen eller rensa datumen."} <button onClick={()=>setCalendarRevision(v=>v+1)}>{lang === "da" ? "Prøv igen" : "Försök igen"}</button></p>}
               <div className="filter-explanation">
                 <span>{origin ? (lang === "da" ? `Udgangspunkt: ${origin.postcode} ${origin.city}. Afstand i luftlinje mellem postområder.` : `Utgångspunkt: ${origin.postcode} ${origin.city}. Fågelväg mellan postområden.`) : (lang === "da" ? "Vælg et postnummer/by fra listen for at bruge radius." : "Välj ett postnummer/ort från listan för att använda radie.")}</span>
                 {profile && <button onClick={()=>setOrigin(profile.place)}>{lang === "da" ? "Brug min by" : "Använd min ort"}</button>}
@@ -651,15 +736,19 @@ export default function HomePage() {
                 </button>;
               })}
             </div>
+            <div className="discovery-toolbar"><button aria-pressed={onlyFavorites} onClick={()=>{if(!user){setAuthOpen(true);return;}setOnlyFavorites(v=>!v);}}><Heart size={18}/>{onlyFavorites?(lang==="da"?"Vis alle ting":"Visa alla saker"):(lang==="da"?"Mine favoritter":"Mina favoriter")}</button></div>
+            <button className="wanted-link" onClick={()=>navigate("wanted")}><Search size={18}/>{lang === "da" ? "Finder du ikke det, du søger? Opret en efterlysning" : "Hittar du inte det du söker? Skapa en efterlysning"}</button>
+            {user && <SavedSearches lang={lang} prefs={prefs} filter={savedFilter} onChange={setPrefs} onApply={applySearch} items={listings} />}
             <div className="mb-4 mt-7 flex items-end justify-between">
               <div><p className="text-sm font-bold uppercase tracking-[0.14em] text-[#777b90]">{`${filtered.length} ${t.results}`}{radius !== "all" ? ` · ${radius} km` : ""}</p><h2 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">{t.popular}</h2></div>
             </div>
-            {filtered.length ? <div className="listing-grid">{filtered.map((item) => <ListingCard key={item.id} item={item} lang={lang} freeLabel={priceLabel(item, lang)} onOpen={() => setSelected(item)} />)}</div> :
+            {listingsLoading ? <p role="status">{lang === "da" ? "Henter annoncer…" : "Hämtar annonser…"}</p> : listingsError ? <p role="alert">{lang === "da" ? "Annoncerne kunne ikke hentes. Genindlæs siden." : "Annonserna kunde inte hämtas. Ladda om sidan."}</p> : datePending || dateFailed || (datesEntered && !searchDatesValid) ? null : filtered.length ? <div className="listing-grid">{filtered.map((item) => <ListingCard key={item.id} item={item} lang={lang} freeLabel={priceLabel(item, lang)} periodDays={searchDays} favorite={prefs.favorites.includes(item.id)} busy={favoriteBusy===item.id} onFavorite={()=>void favorite(item)} onOpen={() => setSelected(item)} />)}</div> :
               <div className="rounded-xl border border-dashed border-[#cbd0dd] bg-white px-6 py-16 text-center"><Search className="mx-auto mb-4 text-[#85899b]" size={34} /><p className="font-bold">{t.noResults}</p></div>}
           </>}
 
+          {tab === "wanted" && <div className="content-panel"><h1 className="sr-only">{lang === "da" ? "Jeg søger" : "Jag söker"}</h1><button className="browse-back" onClick={()=>setTab("home")}>{lang === "da" ? "Tilbage til søgning og søgeområde" : "Tillbaka till sökning och sökområde"}</button><WantedBoard lang={lang} uid={user?.uid} origin={origin} radius={radius} items={listings} onLogin={()=>setAuthOpen(true)} onOpen={id=>{const item=listings.find(i=>i.id===id);if(item)setSelected(item);else toast.info(lang==="da"?"Annoncen er ikke længere tilgængelig.":"Annonsen är inte längre tillgänglig.");}} /></div>}
           {tab === "map" && <div className="map-page"><h1 className="sr-only">{lang === "da" ? "Kort" : "Karta"}</h1>{profile ? <CommunityMap origin={profile.place} radiusKm={100} lang={lang} /> : <div className="content-panel"><p>{lang === "da" ? "Udfyld din profil for at se kortet med udgangspunkt i dit postnummer." : "Fyll i din profil för att se kartan med utgångspunkt i ditt postnummer."}</p><Button className="mt-4" onClick={()=>setTab("profile")}>{lang === "da" ? "Gå til konto" : "Gå till konto"}</Button></div>}</div>}
-          {tab === "items" && <ItemsView lang={lang} profile={profile} listings={listings.filter(item => item.owned)} plan={listingPlan} onAdd={openAdd} onEdit={openEdit} onDelete={setPendingDelete} />}
+          {tab === "items" && <ItemsView lang={lang} profile={profile} listings={listings.filter(item => item.owned)} plan={listingPlan} onAdd={openAdd} onEdit={openEdit} onDelete={setPendingDelete} onCalendar={setCalendarItem} />}
           {tab === "requests" && <RequestsView t={t} loans={loans} lang={lang} userUid={user?.uid ?? ""} loading={agreementsLoading} loadError={agreementsError} direction={loanDirection} setDirection={setLoanDirection} archive={loanArchive} setArchive={setLoanArchive} onChat={setChatLoan} onAgreement={openAgreement} onDecision={(loan,action)=>setPendingDecision({loan,action})} />}
           {tab === "profile" && <ProfileView lang={lang} profile={profile} authenticatedEmail={user?.email || undefined} onSave={saveProfile}
             onLogout={logout} onSubscription={() => setTab("subscription")} />}
@@ -671,7 +760,7 @@ export default function HomePage() {
             <div className="sharing-info">
               <h2>{lang === "da" ? "Enkel og ærlig pris" : "Enkelt och tydligt pris"}</h2>
               <p><b>{lang === "da" ? "Gratis at søge og låne" : "Gratis att söka och låna"}</b>{lang === "da" ? "Det koster ikke noget at finde ting eller sende en forespørgsel." : "Det kostar inget att hitta saker eller skicka en förfrågan."}</p>
-              <p><b>{lang === "da" ? "1 annonce gratis" : "1 annons gratis"}</b>{lang === "da" ? "Alle kan have 1 aktiv annonce uden betaling." : "Alla kan ha 1 aktiv annons utan betalning."}</p>
+              <p><b>{lang === "da" ? "Annoncer kræver Circle Plus" : "Annonser kräver Circle Plus"}</b>{lang === "da" ? "Op til 20 aktive ting for 49 DKK eller 69 SEK om måneden." : "Upp till 20 aktiva saker för 49 DKK eller 69 SEK per månad."}</p>
               <p><b>Veyro Circle Plus</b>{lang === "da" ? "49 DKK om måneden for op til 20 aktive annoncer. Sikker betaling via Stripe." : "69 SEK per månad för upp till 20 aktiva annonser. Säker betalning via Stripe."}</p>
               <p className="muted">{lang === "da" ? "Veyro Circle tager ingen provision af den private lejeaftale." : "Veyro Circle tar ingen provision på den privata hyresaffären."}</p>
             </div>
@@ -692,11 +781,11 @@ export default function HomePage() {
       </footer>
       <nav className="mobile-nav" aria-label="Mobilmenu">
         <MobileNav icon={Home} label={t.navHome} active={tab === "home"} onClick={() => setTab("home")} />
-        <MobileNav icon={MapIcon} label={lang === "da" ? "Kort" : "Karta"} active={tab === "map"} onClick={() => setTab("map")} />
-        <MobileNav icon={ImagePlus} label={t.navItems} active={tab === "items"} onClick={() => setTab("items")} />
+        <MobileNav icon={MapIcon} label={lang === "da" ? "Kort" : "Karta"} active={tab === "map"} onClick={() => navigate("map")} />
+        <MobileNav icon={ImagePlus} label={t.navItems} active={tab === "items"} onClick={() => navigate("items")} />
         <button className="add-mobile" onClick={openAdd} aria-label={t.addItem}><PackagePlus size={25} /></button>
-        <MobileNav icon={CalendarDays} label={t.navRequests} active={tab === "requests"} badge={requestSent} onClick={() => setTab("requests")} />
-        <MobileNav icon={CircleUserRound} label={t.navProfile} active={tab === "profile"} onClick={() => setTab("profile")} />
+        <MobileNav icon={CalendarDays} label={t.navRequests} active={tab === "requests"} badge={requestSent} onClick={() => navigate("requests")} />
+        <MobileNav icon={CircleUserRound} label={t.navProfile} active={tab === "profile"} onClick={() => navigate("profile")} />
       </nav>
 
       <Dialog open={!!selected && !showRequest} onOpenChange={(open) => !open && setSelected(null)}>
@@ -706,8 +795,12 @@ export default function HomePage() {
             <span className="absolute left-5 top-5 rounded-md bg-white px-3 py-1.5 text-sm font-bold shadow-sm">{priceLabel(selected, lang)}</span>
           </div> : <div className={`listing-placeholder relative flex h-52 items-center justify-center bg-gradient-to-br ${selected.color}`}><selected.icon size={86} strokeWidth={1.35} className="text-[#172936]/75" /><span className="absolute left-5 top-5 rounded-full bg-white px-3 py-1.5 text-sm font-bold">{priceLabel(selected, lang)}</span></div>}
           <div className="listing-dialog-body">
-            <DialogHeader className="text-left"><DialogTitle className="text-2xl font-bold tracking-tight">{selected.name}</DialogTitle><DialogDescription className="flex flex-wrap items-center gap-3"><span className="flex items-center gap-1"><MapPin size={15} />{selected.city} · {Number.isFinite(selected.distance) ? `ca. ${selected.distance.toLocaleString(lang === "da" ? "da-DK" : "sv-SE", {maximumFractionDigits: 1})} km` : ""}</span><span className="flex items-center gap-1 font-bold text-[#172936]"><Star size={15} fill="#aa6500" className="text-[#aa6500]" />{selected.rating}</span></DialogDescription></DialogHeader>
+            <DialogHeader className="text-left"><DialogTitle className="text-2xl font-bold tracking-tight">{selected.name}</DialogTitle><DialogDescription className="flex flex-wrap items-center gap-3"><span className="flex items-center gap-1"><MapPin size={15} />{selected.city} · {Number.isFinite(selected.distance) ? `ca. ${selected.distance.toLocaleString(lang === "da" ? "da-DK" : "sv-SE", {maximumFractionDigits: 1})} km` : ""}</span></DialogDescription></DialogHeader>
             <p className="mt-5 leading-7 text-[#575b6e]">{selected.description}</p>
+            <ListingReviews key={selected.id+"reviews"} id={selected.id} lang={lang} />
+            <ListingCalendar key={selected.id} id={selected.id} lang={lang} from={searchFrom} to={searchTo} onRange={(f,t)=>{setSearchFrom(f);setSearchTo(t);}} />
+            {searchDays && <p className="period-price">{lang === "da" ? "Pris for perioden" : "Pris för perioden"}: <strong>{money(selected.dailyPrice*searchDays,selected.country,lang)}</strong> · {searchDays} {lang === "da" ? "kalenderdage" : "kalenderdagar"}</p>}
+            <dl className="listing-specs">{(detailFields[selected.category]??[]).filter(f=>selected.details?.[f.key]).map(f=><div key={f.key}><dt>{f[lang]}</dt><dd>{selected.details![f.key]}</dd></div>)}</dl>
             <DepositSummary amount={selected.deposit ?? 0} country={selected.country} lang={lang} />
             <div className="mt-5 flex items-center justify-between rounded-xl bg-[#f2f4f9] p-4"><div className="flex items-center gap-3"><span className="flex size-10 items-center justify-center rounded-full bg-[#008EAC] font-bold text-white">{selected.owner[0]}</span><div><p className="font-bold">{selected.owner}</p><p className="text-xs text-[#777b8e]">{t.verify}</p></div></div><ShieldCheck size={22} className="text-[#587560]" /></div>
             <div className="mt-4 flex items-center gap-2 text-sm font-bold text-[#31744c]"><Check size={17} />{selected.availability}</div>
@@ -719,10 +812,13 @@ export default function HomePage() {
         </DialogContent>}
       </Dialog>
 
+      <Dialog open={!!calendarItem} onOpenChange={open=>!open && setCalendarItem(null)}><DialogContent className="calendar-dialog"><DialogHeader><DialogTitle>{calendarItem?.name}</DialogTitle><DialogDescription>{lang === "da" ? "Administrér ledige og blokerede dage" : "Hantera lediga och blockerade dagar"}</DialogDescription></DialogHeader>{calendarItem && <ListingCalendar key={calendarItem.id} id={calendarItem.id} lang={lang} owner />}</DialogContent></Dialog>
+
       <Dialog open={showRequest} onOpenChange={setShowRequest}>
         <DialogContent className="request-dialog max-h-[calc(100dvh-1rem)] overflow-y-auto rounded-xl sm:max-w-[520px]">
           <DialogHeader><DialogTitle className="text-2xl font-bold">{t.requestTitle}</DialogTitle><DialogDescription>{selected?.name}</DialogDescription></DialogHeader>
           <div className="grid gap-4 sm:grid-cols-2"><label className="field-label">{t.from}<input type="date" min={todayLocal()} value={from} onChange={e=>setFrom(e.target.value)} /></label><label className="field-label">{t.to}<input type="date" min={from || todayLocal()} value={to} onChange={e=>setTo(e.target.value)} /></label></div>
+          <div className="date-search-row"><label>{lang === "da" ? "Afhentning kl." : "Hämtning kl."}<input type="time" value={pickupTime} onChange={e=>setPickupTime(e.target.value)} /></label><label>{lang === "da" ? "Tilbagelevering kl." : "Återlämning kl."}<input type="time" value={returnTime} onChange={e=>setReturnTime(e.target.value)} /></label></div><p className="search-date-help">{lang === "da" ? "Lokal tid i Danmark/Sverige. Ejeren godkender tiderne sammen med forespørgslen." : "Lokal tid i Danmark/Sverige. Ägaren godkänner tiderna tillsammans med förfrågan."}</p>
           {bookedPeriods.length > 0 && <div className="booked-periods"><strong>{lang === "da" ? "Allerede reserveret" : "Redan reserverad"}</strong><ul>{bookedPeriods.map((period,index)=><li key={index}>{formatAgreementDate(period.from,lang)} – {formatAgreementDate(period.to,lang)}</li>)}</ul></div>}
           {bookingConflict && <p role="alert" className="form-error">{lang === "da" ? "Perioden overlapper en godkendt booking. Vælg andre datoer." : "Perioden överlappar en godkänd bokning. Välj andra datum."}</p>}
           {availabilityError && <p role="status">{lang === "da" ? "Reserverede datoer kunne ikke vises. Ejeren kan kun godkende, hvis perioden er ledig." : "Reserverade datum kunde inte visas. Ägaren kan endast godkänna om perioden är ledig."}</p>}
@@ -742,6 +838,7 @@ export default function HomePage() {
       <Dialog open={notificationsOpen} onOpenChange={setNotificationsOpen}>
         <DialogContent className="notification-dialog">
           <DialogHeader><DialogTitle>{lang === "da" ? "Notifikationer" : "Aviseringar"}</DialogTitle><DialogDescription>{lang === "da" ? "Seneste aktivitet pr. aftale og dine påmindelser. Opdateres hvert 15. sekund, mens Circle er åbent." : "Senaste aktivitet per avtal och dina påminnelser. Uppdateras var 15:e sekund när Circle är öppet."}</DialogDescription></DialogHeader>
+          {user && savedMatches>0 && <p>{lang === "da" ? "Nye match i dine gemte søgninger" : "Nya träffar i dina sparade sökningar"}: {savedMatches} <button onClick={()=>{setTab("home");setNotificationsOpen(false);}}>{lang==="da"?"Se gemte søgninger":"Se sparade sökningar"}</button></p>}
           {user && <PushSettings uid={user.uid} lang={lang} />}
           {agreementsError && <p role="alert">{lang === "da" ? "Notifikationerne kunne ikke opdateres." : "Aviseringarna kunde inte uppdateras."} <button onClick={agreementsChanged}>{lang === "da" ? "Prøv igen" : "Försök igen"}</button></p>}
           {agreementsLoading && <p role="status">{lang === "da" ? "Henter…" : "Hämtar…"}</p>}
@@ -758,12 +855,16 @@ export default function HomePage() {
         {agreementLoan && <DialogContent className="agreement-dialog max-h-[94vh] overflow-y-auto rounded-xl sm:max-w-[760px]">
           <AgreementJourney agreement={agreementLoan} uid={user?.uid ?? ""} lang={lang} names={{borrower:agreementLoan.borrower.name,lender:agreementLoan.item.owner}} onContinue={phase=>{const section=document.getElementById(`agreement-${phase}-section`);section?.scrollIntoView({block:"start",behavior:"instant"});section?.focus({preventScroll:true});}} />
           <div className="agreement-account-help no-print"><p>{lang === "da" ? "Begge underskriver fra hver sin konto. Åbn samme ticket under Mine lån → Jeg låner / Jeg udlåner." : "Båda signerar från varsitt konto. Öppna samma ticket under Mina lån → Jag lånar / Jag lånar ut."}<br/>{lang === "da" ? "Du er logget ind som" : "Du är inloggad som"}: <b>{user?.email}</b></p><Button variant="outline" onClick={agreementsChanged}><RefreshCw size={16}/>{lang === "da" ? "Opdatér aftalen" : "Uppdatera avtalet"}</Button></div>
+          {agreementStage(agreementLoan)==="returned" && <ReviewForm key={agreementLoan.id} id={agreementLoan.id} lang={lang} />}
+          {["accepted","handedOver"].includes(agreementStage(agreementLoan)) && !agreementLoan.borrowerReturnSignature && !agreementLoan.lenderReturnSignature && <AgreementExtension key={agreementLoan.id} loan={agreementLoan} uid={user?.uid??""} lang={lang} />}
           <div className="print-agreement">
             <p className="agreement-lifecycle-status">{stageLabels[lang][agreementStage(agreementLoan)]}</p>
             {agreementStage(agreementLoan) === "requested" && <p className="no-print">{lang === "da" ? "Ejeren skal først godkende forespørgslen under Mine lån. Derefter åbnes underskrifterne." : "Ägaren måste först godkänna förfrågan under Mina lån. Därefter öppnas signering."}</p>}
             <DialogHeader className="agreement-header"><p className="eyebrow">Veyro Circle · Ticket {agreementLoan.id}</p><DialogTitle className="text-2xl font-bold">{lang === "da" ? "Leje- og låneaftale" : "Hyres- och låneavtal"}</DialogTitle><DialogDescription>{lang === "da" ? "Automatisk aftale mellem ejeren og låneren" : "Automatiskt avtal mellan ägaren och låntagaren"}</DialogDescription></DialogHeader>
+            {agreementStage(agreementLoan)==="requested" && <p className="contact-privacy-note">{lang === "da" ? "Adresse og telefonnummer bliver først synlige, når ejeren har godkendt forespørgslen." : "Adress och telefonnummer visas först när ägaren har godkänt förfrågan."}</p>}
             <div className="agreement-parties"><AgreementParty title={lang === "da" ? "Udlejer / ejer" : "Uthyrare / ägare"} name={agreementLoan.item.owner} street={agreementLoan.item.ownerStreet} postcode={agreementLoan.item.place.postcode} city={agreementLoan.item.place.city} phone={agreementLoan.item.ownerPhone} /><AgreementParty title={lang === "da" ? "Låner / lejer" : "Låntagare / hyrestagare"} name={agreementLoan.borrower.name} street={agreementLoan.borrower.street} postcode={agreementLoan.borrower.place.postcode} city={agreementLoan.borrower.place.city} phone={agreementLoan.borrower.phone} /></div>
-            <dl className="agreement-facts"><div><dt>{lang === "da" ? "Genstand" : "Föremål"}</dt><dd>{agreementLoan.item.name}</dd></div><div><dt>{lang === "da" ? "Periode" : "Period"}</dt><dd>{agreementLoan.from} – {agreementLoan.to} ({agreementLoan.days} {lang === "da" ? "dage" : "dagar"})</dd></div><div><dt>{lang === "da" ? "Lejepris" : "Hyra"}</dt><dd>{agreementLoan.total ? money(agreementLoan.total, agreementLoan.item.country, lang) : t.free}</dd></div><div><dt>{lang === "da" ? "Depositum" : "Deposition"}</dt><dd>{agreementLoan.deposit ? money(agreementLoan.deposit, agreementLoan.item.country, lang) : (lang === "da" ? "Intet aftalt" : "Ingen avtalad")}</dd></div></dl>
+            <dl className="agreement-facts"><div><dt>{lang === "da" ? "Genstand" : "Föremål"}</dt><dd>{agreementLoan.item.name}</dd></div><div><dt>{lang === "da" ? "Periode" : "Period"}</dt><dd>{agreementLoan.from} {agreementLoan.pickupTime} – {agreementLoan.to} {agreementLoan.returnTime} ({agreementLoan.days} {lang === "da" ? "dage" : "dagar"})</dd></div><div><dt>{lang === "da" ? "Lejepris" : "Hyra"}</dt><dd>{agreementLoan.total ? money(agreementLoan.total, agreementLoan.item.country, lang) : t.free}</dd></div><div><dt>{lang === "da" ? "Depositum" : "Deposition"}</dt><dd>{agreementLoan.deposit ? money(agreementLoan.deposit, agreementLoan.item.country, lang) : (lang === "da" ? "Intet aftalt" : "Ingen avtalad")}</dd></div></dl>
+            {!!agreementLoan.extensions?.length && <section className="agreement-addenda"><h3>{lang === "da" ? "Godkendte tillæg" : "Godkända tillägg"}</h3><p>{lang === "da" ? "Oprindelig retur/pris" : "Ursprunglig retur/pris"}: {agreementLoan.originalTo} {agreementLoan.originalReturnTime} · {money(agreementLoan.originalTotal??0,agreementLoan.item.country,lang)}. {lang === "da" ? "Tillæggene er godkendt fra begge konti; de oprindelige underskrifter er bevaret." : "Tilläggen har godkänts från båda kontona; ursprungliga signaturer har bevarats."}</p>{agreementLoan.extensions.map(e=><p key={e.id}>{e.to} {e.returnTime} · {money(e.total,agreementLoan.item.country,lang)} · {e.proposedBy===agreementLoan.borrowerUid ? agreementLoan.borrower.name : agreementLoan.item.owner}: {e.proposedAt.slice(0,16).replace("T"," ")} UTC → {e.acceptedBy===agreementLoan.borrowerUid ? agreementLoan.borrower.name : agreementLoan.item.owner}: {e.acceptedAt?.slice(0,16).replace("T"," ")} UTC</p>)}</section>}
             <section className="agreement-terms"><h3>{lang === "da" ? "Aftalens vilkår" : "Avtalsvillkor"}</h3><ol><li>{lang === "da" ? "Genstanden udleveres i den beskrevne stand. Parterne bør dokumentere standen med billeder ved udlevering og aflevering." : "Föremålet lämnas ut i beskrivet skick. Parterna bör dokumentera skicket med bilder vid utlämning och återlämning."}</li><li>{lang === "da" ? "Låneren skal bruge genstanden forsvarligt og returnere den senest på slutdatoen. Tid og sted aftales mellem parterne." : "Låntagaren ska använda föremålet aktsamt och återlämna det senast på slutdagen. Tid och plats avtalas mellan parterna."}</li><li>{lang === "da" ? "Skader, bortkomst, betaling, depositum og eventuel erstatning afgøres mellem parterne efter gældende ret. Veyro Circle er formidler og ikke part i aftalen." : "Skador, förlust, betalning, deposition och eventuell ersättning avgörs mellan parterna enligt gällande rätt. Veyro Circle förmedlar kontakten och är inte part i avtalet."}</li></ol>{agreementLoan.message && <p><b>{lang === "da" ? "Særlig aftale:" : "Särskild överenskommelse:"}</b> {agreementLoan.message}</p>}</section>
             <section className="agreement-id-check"><h3><ShieldCheck size={19} />{lang === "da" ? "Kontrol ved overdragelsen" : "Kontroll vid överlämningen"}</h3><p>{lang === "da" ? "Parterne skal sikre sig, hvem de indgår aftalen med." : "Parterna ska säkerställa vem de ingår avtalet med."}</p><ul><li>{lang === "da" ? "Begge parter foreviser gyldig billedlegitimation med navn og adresse." : "Båda parter visar giltig fotolegitimation med namn och adress."}</li><li>{lang === "da" ? "Navn og adresse på legitimationen sammenholdes med oplysningerne i aftalen." : "Namn och adress på legitimationen jämförs med uppgifterna i avtalet."}</li><li>{lang === "da" ? "Aftalen underskrives på telefonen eller udskrives og underskrives fysisk af begge parter." : "Avtalet signeras på telefonen eller skrivs ut och undertecknas fysiskt av båda parter."}</li></ul><p className="id-privacy">{lang === "da" ? "Tag ikke kopi eller foto af legitimationen, medmindre personen udtrykkeligt har accepteret det og der er et lovligt behov." : "Ta inte en kopia eller ett foto av legitimationen om personen inte uttryckligen har godkänt det och det finns ett lagligt behov."}</p></section>
             <AgreementConditionNote phase="handover" lang={lang} savedNote={agreementLoan.handoverNote ?? ""} draft={handoverNoteDraft} onChange={setHandoverNoteDraft} saved={Boolean(agreementLoan.saved)} locked={Boolean(agreementLoan.borrowerSignature || agreementLoan.lenderSignature)} enabled={agreementStage(agreementLoan) === "accepted"} onSave={() => void storeAgreementNote(agreementLoan, "handover")} busy={noteBusy === "handover"} />
@@ -806,6 +907,7 @@ export default function HomePage() {
           <div className="field-label">{t.country}<CountrySelect value={newCountry} onChange={c=>{setNewCountry(c);setNewPlace(null);}} lang={lang} /></div>
           <PlacePicker key={newCountry} country={newCountry} value={newPlace} onChange={setNewPlace} lang={lang} label={lang === "da" ? "Afhentning · postnummer og by *" : "Hämtning · postnummer och ort *"} />
           <div className="field-label">{lang === "da" ? "Kategori" : "Kategori"}<Select value={newCategory} onValueChange={setNewCategory}><SelectTrigger className="!h-12 w-full bg-white"><SelectValue /></SelectTrigger><SelectContent>{categories.filter(c=>c.id !== "all").map(c=><SelectItem key={c.id} value={c.id}>{c[lang]}</SelectItem>)}</SelectContent></Select></div>
+          <div className="listing-spec-inputs">{(detailFields[newCategory]??[]).map(field=><label className="field-label" key={field.key}>{field[lang]}<input maxLength={200} value={newDetails[field.key]??""} onChange={e=>setNewDetails(old=>({...old,[field.key]:e.target.value}))} /></label>)}</div>
           <fieldset className="pricing-choice">
             <legend>{lang === "da" ? "Hvordan vil du dele tingen?" : "Hur vill du dela saken?"}</legend>
             <RadioGroup value={pricing} onValueChange={setPricing} className="grid grid-cols-2 gap-3">
@@ -823,7 +925,7 @@ export default function HomePage() {
 
       <Dialog open={showUpgrade} onOpenChange={setShowUpgrade}>
         <DialogContent className="form-dialog max-h-[calc(100dvh-1rem)] overflow-y-auto rounded-xl sm:max-w-[520px]">
-          <DialogHeader><DialogTitle className="flex items-center gap-3 text-2xl font-bold"><span className="plus-icon"><Crown size={23} /></span>Veyro Circle Plus</DialogTitle><DialogDescription>{lang === "da" ? "Du har brugt din gratisannonce. Med Plus kan du have op til 20 aktive ting ad gangen." : "Du har använt din gratisannons. Med Plus kan du ha upp till 20 aktiva saker samtidigt."}</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle className="flex items-center gap-3 text-2xl font-bold"><span className="plus-icon"><Crown size={23} /></span>Veyro Circle Plus</DialogTitle><DialogDescription>{lang === "da" ? "Det er gratis at søge og sende forespørgsler. For at annoncere skal du have Plus, som giver op til 20 aktive ting." : "Det är gratis att söka och skicka förfrågningar. För att annonsera behöver du Plus, som ger upp till 20 aktiva saker."}</DialogDescription></DialogHeader>
           <div className="upgrade-price"><strong>{profile?.place.country === "SE" ? "69 SEK" : "49 DKK"}</strong><span>{lang === "da" ? "om måneden" : "per månad"}</span></div>
           <ul className="upgrade-benefits">
             <li><Check size={18} />{lang === "da" ? "Op til 20 aktive ting" : "Upp till 20 aktiva saker"}</li>
@@ -873,7 +975,7 @@ function printAgreementDocument(lang: Lang) {
   }
   printDocument.open();
   printDocument.write(`<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><title>Veyro Circle · ${lang === "da" ? "Leje- og låneaftale" : "Hyres- och låneavtal"}</title><style>
-    @page{size:A4 portrait;margin:6mm}*{box-sizing:border-box;min-width:0}html,body{width:100%;margin:0;padding:0;overflow:visible}body{color:#172936;font:8.2px/1.13 Arial,sans-serif;overflow-wrap:anywhere}h1,h2,h3,p{margin-top:0}h2{font-size:16px;line-height:1.08;margin-bottom:2px}h3{font-size:10px;line-height:1.12;margin-bottom:2px}.print-agreement{width:100%;max-width:100%;overflow:hidden}.agreement-header{border-bottom:2px solid #008eac;padding-bottom:3px}.agreement-header p{margin-bottom:1px}.eyebrow,small,dt{color:#607583;font-size:7px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}.agreement-parties,.agreement-signatures,.agreement-facts{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:4px;margin-top:4px}.agreement-parties section,.agreement-signatures section{display:grid;gap:1px;border:1px solid #d6e1e6;padding:3px 4px;break-inside:avoid}.agreement-parties p{margin-bottom:1px}.agreement-facts{gap:0;border:1px solid #d6e1e6;break-inside:avoid}.agreement-facts div{padding:2px 4px;border-bottom:1px solid #d6e1e6}.agreement-facts dd{margin:0;font-weight:700}.agreement-terms,.agreement-id-check{margin-top:4px}.agreement-terms ol,.agreement-id-check ul{margin:1px 0;padding-left:13px}.agreement-terms li+li,.agreement-id-check li+li{margin-top:1px}.agreement-terms p{margin-bottom:1px}.agreement-id-check{border:1px solid #86b8c2;padding:3px 4px;background:#eef9fa;break-inside:avoid}.agreement-id-check p{margin-bottom:1px}.agreement-condition-note{margin-top:4px;border:1px solid #bfd2da;padding:3px 4px;background:#f8fbfc;break-inside:avoid}.condition-note-heading{display:flex;justify-content:space-between}.condition-note-heading p,.condition-note-help{margin-bottom:1px}.condition-note-value{display:grid;gap:1px;margin-top:2px;border-left:2px solid #008eac;padding:2px 4px;background:white}.condition-note-value span{white-space:pre-wrap}.paper-note-lines{display:block}.paper-note-lines span{display:block;height:8px;border-bottom:1px solid #aeb9c5}.agreement-signatures section{min-height:45px;border-style:dashed}.agreement-signatures p{margin-bottom:1px}.paper-signature-line{display:block;margin-top:auto;padding-top:11px;border-bottom:1px solid #172936}.agreement-legal{margin:4px 0 0;border-left:3px solid #d88920;padding:3px 4px;background:#fff7df;break-inside:avoid}.return-receipt{margin-top:4px;border:1px solid #7eb7c2;padding:3px 4px;background:#f2fbfc;break-inside:avoid}.return-receipt>header{display:flex;align-items:center;justify-content:space-between}.return-receipt>header p,.return-receipt>p{margin:1px 0}.return-receipt>header span{font-weight:700}.return-signatures{margin-top:2px}.return-signatures section{min-height:42px}.signature-image{max-width:100%;max-height:30px;object-fit:contain}svg{display:none}
+    @page{size:A4 portrait;margin:6mm}*{box-sizing:border-box;min-width:0}html,body{width:100%;margin:0;padding:0;overflow:visible}body{color:#172936;font:8.2px/1.13 Arial,sans-serif;overflow-wrap:anywhere}h1,h2,h3,p{margin-top:0}h2{font-size:16px;line-height:1.08;margin-bottom:2px}h3{font-size:10px;line-height:1.12;margin-bottom:2px}.print-agreement{width:100%;max-width:100%;overflow:hidden}.agreement-header{border-bottom:2px solid #008eac;padding-bottom:3px}.agreement-header p{margin-bottom:1px}.eyebrow,small,dt{color:#607583;font-size:7px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}.agreement-parties,.agreement-signatures,.agreement-facts{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:4px;margin-top:4px}.agreement-parties section,.agreement-signatures section{display:grid;gap:1px;border:1px solid #d6e1e6;padding:3px 4px;break-inside:avoid}.agreement-parties p{margin-bottom:1px}.agreement-facts{gap:0;border:1px solid #d6e1e6;break-inside:avoid}.agreement-facts div{padding:2px 4px;border-bottom:1px solid #d6e1e6}.agreement-facts dd{margin:0;font-weight:700}.agreement-terms,.agreement-id-check{margin-top:4px}.agreement-terms ol,.agreement-id-check ul{margin:1px 0;padding-left:13px}.agreement-terms li+li,.agreement-id-check li+li{margin-top:1px}.agreement-terms p{margin-bottom:1px}.agreement-id-check{border:1px solid #86b8c2;padding:3px 4px;background:#eef9fa;break-inside:avoid}.agreement-id-check p{margin-bottom:1px}.agreement-condition-note{margin-top:4px;border:1px solid #bfd2da;padding:3px 4px;background:#f8fbfc;break-inside:avoid}.condition-note-heading{display:flex;justify-content:space-between}.condition-note-heading p,.condition-note-help{margin-bottom:1px}.condition-note-value{display:grid;gap:1px;margin-top:2px;border-left:2px solid #008eac;padding:2px 4px;background:white}.condition-note-value span{white-space:pre-wrap}.paper-note-lines{display:block}.paper-note-lines span{display:block;height:8px;border-bottom:1px solid #aeb9c5}.agreement-signatures section{min-height:45px;border-style:dashed}.agreement-signatures p{margin-bottom:1px}.paper-signature-line{display:block;margin-top:auto;padding-top:11px;border-bottom:1px solid #172936}.agreement-legal{margin:4px 0 0;border-left:3px solid #d88920;padding:3px 4px;background:#fff7df;break-inside:avoid}.return-receipt{margin-top:4px;border:1px solid #7eb7c2;padding:3px 4px;background:#f2fbfc;break-inside:avoid}.return-receipt>header{display:flex;align-items:center;justify-content:space-between}.return-receipt>header p,.return-receipt>p{margin:1px 0}.return-receipt>header span{font-weight:700}.return-signatures{margin-top:2px}.return-signatures section{min-height:42px}.signature-image{max-width:100%;max-height:30px;object-fit:contain}svg{display:none}.agreement-addenda{margin-top:3px;border:1px solid #d6e1e6;padding:3px}.agreement-addenda p{margin:1px 0}
   </style></head><body>${copy.outerHTML}</body></html>`);
   printDocument.close();
   window.setTimeout(() => {
@@ -892,7 +994,7 @@ function agreementForCloud(loan: Loan): StoredAgreement {
     id:loan.id, borrowerUid:loan.borrowerUid, ...(loan.lenderUid ? {lenderUid:loan.lenderUid} : {}), participantUids:loan.lenderUid ? [loan.borrowerUid,loan.lenderUid] : [loan.borrowerUid], borrower:loan.borrower,
     lender:{name:loan.item.owner,street:loan.item.ownerStreet,phone:loan.item.ownerPhone,place:loan.item.place},
     item:{id:loan.item.id,name:loan.item.name,category:loan.item.category,country:loan.item.country,dailyPrice:loan.item.dailyPrice},
-    from:loan.from,to:loan.to,days:loan.days,total:loan.total,deposit:loan.deposit,message:loan.message,
+    from:loan.from,to:loan.to,pickupTime:loan.pickupTime,returnTime:loan.returnTime,days:loan.days,total:loan.total,deposit:loan.deposit,message:loan.message,
     handoverNote:loan.handoverNote,returnNote:loan.returnNote,borrowerSignature:loan.borrowerSignature,lenderSignature:loan.lenderSignature,borrowerReturnSignature:loan.borrowerReturnSignature,lenderReturnSignature:loan.lenderReturnSignature,returnedAt:loan.returnedAt,returnCondition:loan.returnCondition,
   };
 }
@@ -911,9 +1013,9 @@ function DepositSummary({amount,country,lang,explain=false}:{amount:number;count
   return <div className="listing-deposit"><span>{lang === "da" ? "Depositum fastsat af ejeren" : "Deposition bestämd av ägaren"}</span><strong>{amount ? money(amount,country,lang) : (lang === "da" ? "Intet depositum" : "Ingen deposition")}</strong>{explain && <small>{lang === "da" ? "Beløbet overføres til aftalen. Betaling aftales direkte med ejeren; Circle opkræver det ikke." : "Beloppet förs över till avtalet. Betalning avtalas direkt med ägaren; Circle tar inte betalt för det."}</small>}</div>;
 }
 
-function ListingCard({ item, lang, freeLabel, onOpen }: { item: Listing; lang:Lang; freeLabel: string; onOpen: () => void }) {
+function ListingCard({ item, lang, freeLabel, onOpen,periodDays,favorite,busy,onFavorite }: { item: Listing; lang:Lang; freeLabel: string; onOpen: () => void; periodDays?:number|null;favorite?:boolean;busy?:boolean;onFavorite?:()=>void }) {
   const Icon = item.icon;
-  return <button onClick={onOpen} className="listing-card text-left"><div className={`listing-image bg-gradient-to-br ${item.color}`}>{item.photos?.[0] ? <img src={item.photos[0].src} alt={item.name} /> : <Icon size={57} strokeWidth={1.4} className="text-[#172936]/70" />}<span className={`free-tag ${item.dailyPrice === 0 ? "is-free" : "is-paid"}`}>{freeLabel}</span><span className="heart-button"><Heart size={18} /></span>{item.photos && item.photos.length > 1 && <span className="photo-count"><Camera size={14} />{item.photos.length}</span>}</div><div className="p-4"><div className="flex items-start justify-between gap-2"><h3>{item.name}</h3><span className="mt-1 flex shrink-0 items-center gap-1 text-xs font-bold">{item.rating > 0 ? <><Star size={13} fill="#aa6500" className="text-[#aa6500]" />{item.rating}</> : "Ny"}</span></div><p className="mt-2 flex items-center gap-1.5 text-sm text-[#6d7185]"><MapPin size={15} />{item.city} · {Number.isFinite(item.distance) ? `ca. ${item.distance.toLocaleString("da-DK", {maximumFractionDigits: 1})} km` : ""}</p><p className="mt-2 text-sm text-[#172936]">{lang === "da" ? "Depositum" : "Deposition"}: {item.deposit ? money(item.deposit,item.country,lang) : (lang === "da" ? "Intet" : "Ingen")}</p><div className="mt-3 flex items-center gap-2"><span className="size-2 rounded-full bg-[#38a66b]" /><span className="text-xs font-bold text-[#397252]">{item.availability}</span></div></div></button>;
+  return <article className="listing-card text-left"><button onClick={onOpen} className="listing-card-main" aria-label={item.name}><div className={`listing-image bg-gradient-to-br ${item.color}`}>{item.photos?.[0] ? <img src={item.photos[0].src} alt={item.name} /> : <Icon size={57} strokeWidth={1.4} className="text-[#172936]/70" />}<span className={`free-tag ${item.dailyPrice === 0 ? "is-free" : "is-paid"}`}>{freeLabel}</span>{item.photos && item.photos.length > 1 && <span className="photo-count"><Camera size={14} />{item.photos.length}</span>}</div><div className="p-4"><div className="flex items-start justify-between gap-2"><h3>{item.name}</h3></div><p className="mt-2 flex items-center gap-1.5 text-sm text-[#6d7185]"><MapPin size={15} />{item.city} · {Number.isFinite(item.distance) ? `ca. ${item.distance.toLocaleString("da-DK", {maximumFractionDigits: 1})} km` : ""}</p><p className="period-price">{periodDays ? <>{lang === "da" ? "Pris for perioden" : "Pris för perioden"}: <strong>{money(item.dailyPrice*periodDays,item.country,lang)}</strong> · {periodDays} {lang === "da" ? "dage" : "dagar"}</> : null}</p><p className="mt-2 text-sm text-[#172936]">{lang === "da" ? "Depositum" : "Deposition"}: {item.deposit ? money(item.deposit,item.country,lang) : (lang === "da" ? "Intet" : "Ingen")}</p><div className="mt-3 flex items-center gap-2"><span className="size-2 rounded-full bg-[#38a66b]" /><span className="text-xs font-bold text-[#397252]">{item.availability}</span></div></div></button><button className="heart-button" disabled={busy} aria-pressed={favorite} aria-label={lang==="da"?(favorite?"Fjern fra favoritter":"Gem som favorit"):(favorite?"Ta bort favorit":"Spara som favorit")} onClick={onFavorite}><Heart size={18} fill={favorite?"currentColor":"none"}/></button></article>;
 }
 
 function SideNav({ icon: Icon, label, active, badge, onClick }: { icon: typeof Home; label: string; active?: boolean; badge?: string; onClick: () => void }) {
@@ -990,7 +1092,7 @@ function ChatDialog({ loan, userUid, lang, onClose }: { loan: Loan | null; userU
 }
 
 function AgreementParty({ title, name, street, postcode, city, phone }: { title: string; name: string; street: string; postcode: string; city: string; phone: string }) {
-  return <section><small>{title}</small><b>{name}</b><span>{street}</span><span>{postcode} {city}</span><span>Telefon: {phone}</span></section>;
+  return <section><small>{title}</small><b>{name}</b>{street && <span>{street}</span>}<span>{postcode} {city}</span>{phone && <span>Telefon: {phone}</span>}</section>;
 }
 
 function AgreementConditionNote({ phase, lang, savedNote, draft, onChange, saved, locked, enabled, onSave, busy }: {
@@ -1080,15 +1182,15 @@ function ProfileView({ lang, profile, authenticatedEmail, onSave, onLogout, onSu
 
 function SubscriptionView({ lang, plan, used, onBack, onUpgrade, onManage }: { lang: Lang; plan: ListingPlan; used: number; onBack: () => void; onUpgrade: () => void; onManage: () => void }) {
   const limit = listingLimit(plan);
-  return <div className="content-panel subscription-page"><button type="button" className="text-link" onClick={onBack}>← {lang === "da" ? "Tilbage til konto" : "Tillbaka till konto"}</button><div><p className="eyebrow">Veyro Circle</p><h1 className="page-title">{lang === "da" ? "Mit abonnement" : "Min prenumeration"}</h1></div><section className={`membership-card ${plan === "plus" ? "is-plus" : ""}`}><div className="membership-top"><div className="membership-icon">{plan === "plus" ? <Crown size={22} /> : <PackagePlus size={22} />}</div><div><p className="eyebrow">{lang === "da" ? "Dit abonnement" : "Din prenumeration"}</p><h2>{plan === "plus" ? "Veyro Circle Plus" : (lang === "da" ? "Gratis medlemskab" : "Gratis medlemskap")}</h2></div><span className="plan-badge">{plan === "plus" ? "Aktiv" : "0 kr."}</span></div><div className="membership-usage"><div><span>{lang === "da" ? "Aktive ting" : "Aktiva saker"}</span><b>{used} {lang === "da" ? "af" : "av"} {limit}</b></div><Progress value={Math.min(100, used / limit * 100)} /></div><p>{plan === "plus" ? (lang === "da" ? "Du kan have op til 20 aktive ting. Redigering og sletning tæller ikke som nye opslag." : "Du kan ha upp till 20 aktiva saker. Redigering och borttagning räknas inte som nya annonser.") : (lang === "da" ? `Du har ${Math.max(0, FREE_LISTING_LIMIT - used)} gratis opslag tilbage. Plus giver plads til ${PLUS_LISTING_LIMIT} aktive ting.` : `Du har ${Math.max(0, FREE_LISTING_LIMIT - used)} gratisannonser kvar. Plus ger plats för ${PLUS_LISTING_LIMIT} aktiva saker.`)}</p>{plan === "free" ? <Button type="button" onClick={onUpgrade} className="membership-cta"><Crown size={17} />Se Veyro Circle Plus</Button> : <Button type="button" onClick={onManage} variant="outline" className="membership-cta manage-subscription">{lang === "da" ? "Administrer abonnement" : "Hantera prenumeration"}</Button>}</section></div>;
+  return <div className="content-panel subscription-page"><button type="button" className="text-link" onClick={onBack}>← {lang === "da" ? "Tilbage til konto" : "Tillbaka till konto"}</button><div><p className="eyebrow">Veyro Circle</p><h1 className="page-title">{lang === "da" ? "Mit abonnement" : "Min prenumeration"}</h1></div><section className={`membership-card ${plan === "plus" ? "is-plus" : ""}`}><div className="membership-top"><div className="membership-icon">{plan === "plus" ? <Crown size={22} /> : <PackagePlus size={22} />}</div><div><p className="eyebrow">{lang === "da" ? "Dit abonnement" : "Din prenumeration"}</p><h2>{plan === "plus" ? "Veyro Circle Plus" : (lang === "da" ? "Gratis søgning og forespørgsler" : "Gratis sökning och förfrågningar")}</h2></div><span className="plan-badge">{plan === "plus" ? "Aktiv" : "0 kr."}</span></div><div className="membership-usage"><div><span>{lang === "da" ? "Aktive ting" : "Aktiva saker"}</span><b>{used} {lang === "da" ? "af" : "av"} {limit}</b></div><Progress value={limit ? Math.min(100, used / limit * 100) : 0} /></div><p>{plan === "plus" ? (lang === "da" ? "Du kan have op til 20 aktive ting. Redigering og sletning tæller ikke som nye opslag." : "Du kan ha upp till 20 aktiva saker. Redigering och borttagning räknas inte som nya annonser.") : (lang === "da" ? `Du kan søge og forespørge gratis. Annoncer kræver Circle Plus: 49 DKK eller 69 SEK om måneden for op til ${PLUS_LISTING_LIMIT} aktive ting.` : `Du kan söka och skicka förfrågningar gratis. Annonser kräver Circle Plus: 49 DKK eller 69 SEK per månad för upp till ${PLUS_LISTING_LIMIT} aktiva saker.`)}</p>{plan === "free" ? <Button type="button" onClick={onUpgrade} className="membership-cta"><Crown size={17} />Se Veyro Circle Plus</Button> : <Button type="button" onClick={onManage} variant="outline" className="membership-cta manage-subscription">{lang === "da" ? "Administrer abonnement" : "Hantera prenumeration"}</Button>}</section></div>;
 }
 
-function ItemsView({ lang, profile, listings, plan, onAdd, onEdit, onDelete }: { lang: Lang; profile: Profile | null; listings: Listing[]; plan: ListingPlan; onAdd: () => void; onEdit: (item: Listing) => void; onDelete: (item: Listing) => void }) {
+function ItemsView({ lang, profile, listings, plan, onAdd, onEdit, onDelete,onCalendar }: { lang: Lang; profile: Profile | null; listings: Listing[]; plan: ListingPlan; onAdd: () => void; onEdit: (item: Listing) => void; onDelete: (item: Listing) => void; onCalendar:(item:Listing)=>void }) {
   const used = listings.length;
   return <div className="content-panel"><section className="my-items my-items-page">
       <div className="my-items-head"><div><p className="eyebrow">{lang === "da" ? "Dine annoncer" : "Dina annonser"}</p><h2>{lang === "da" ? "Mine ting" : "Mina saker"}</h2></div><Button type="button" onClick={onAdd} disabled={!profile || (plan === "plus" && used >= PLUS_LISTING_LIMIT)}><PackagePlus size={17} />{lang === "da" ? "Tilføj" : "Lägg till"}</Button></div>
-      {!profile ? <p className="my-items-empty">{lang === "da" ? "Opret din konto for at dele eller udleje en ting." : "Skapa ditt konto för att dela eller hyra ut en sak."}</p> : listings.length === 0 ? <div className="my-items-empty"><ImagePlus size={28} /><p>{lang === "da" ? "Du har endnu ingen ting. Din første aktive annonce er gratis." : "Du har inga saker ännu. Din första aktiva annons är gratis."}</p><button type="button" onClick={onAdd}>{lang === "da" ? "Opret din første annonce" : "Skapa din första annons"}</button></div> : <div className="my-items-list">
-        {listings.map(item => { const Icon = item.icon; return <article key={item.id} className="my-item-row"><div className={`my-item-thumb bg-gradient-to-br ${item.color}`}>{item.photos?.[0] ? <img src={item.photos[0].src} alt="" /> : <Icon size={27} />}</div><div className="min-w-0 flex-1"><h3>{item.name}</h3><p>{item.city} · {priceLabel(item, lang)}</p><small>{item.photos?.length || 0}/2 {lang === "da" ? "billeder" : "bilder"}</small></div><div className="my-item-actions"><button type="button" onClick={() => onEdit(item)}><Pencil size={16} />{lang === "da" ? "Rediger" : "Redigera"}</button><button type="button" className="delete" onClick={() => onDelete(item)}><Trash2 size={16} />{lang === "da" ? "Slet" : "Ta bort"}</button></div></article>; })}
+      {!profile ? <p className="my-items-empty">{lang === "da" ? "Opret din konto for at dele eller udleje en ting." : "Skapa ditt konto för att dela eller hyra ut en sak."}</p> : listings.length === 0 ? <div className="my-items-empty"><ImagePlus size={28} /><p>{lang === "da" ? "Du har endnu ingen ting. Circle Plus giver plads til op til 20 aktive annoncer." : "Du har inga saker ännu. Circle Plus ger plats för upp till 20 aktiva annonser."}</p><button type="button" onClick={onAdd}>{lang === "da" ? "Opret din første annonce" : "Skapa din första annons"}</button></div> : <div className="my-items-list">{plan!=="plus" && <p className="agreements-load-note">{lang==="da"?"Dine ting er gemt, men vises ikke i søgningen uden Circle Plus. Du kan stadig slette dem.":"Dina saker finns kvar men visas inte i sökningen utan Circle Plus. Du kan fortfarande ta bort dem."}</p>}
+        {listings.map(item => { const Icon = item.icon; return <article key={item.id} className="my-item-row"><div className={`my-item-thumb bg-gradient-to-br ${item.color}`}>{item.photos?.[0] ? <img src={item.photos[0].src} alt="" /> : <Icon size={27} />}</div><div className="min-w-0 flex-1"><h3>{item.name}</h3><p>{item.city} · {priceLabel(item, lang)}</p><small>{item.photos?.length || 0}/2 {lang === "da" ? "billeder" : "bilder"}</small></div><div className="my-item-actions"><button type="button" onClick={()=>onCalendar(item)}><CalendarDays size={16}/>{lang === "da" ? "Kalender" : "Kalender"}</button><button type="button" onClick={() => onEdit(item)}><Pencil size={16} />{lang === "da" ? "Rediger" : "Redigera"}</button><button type="button" className="delete" onClick={() => onDelete(item)}><Trash2 size={16} />{lang === "da" ? "Slet" : "Ta bort"}</button></div></article>; })}
       </div>}
     </section></div>;
 }

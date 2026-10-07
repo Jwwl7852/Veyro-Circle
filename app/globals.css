@@ -637,3 +637,46 @@ button:focus-visible,a:focus-visible { outline:3px solid #819eb6; outline-offset
 .push-settings { border:1px solid var(--border); padding:1rem; border-radius:8px; font-size:1rem; overflow-wrap:anywhere; }
 .push-settings p { margin:.6rem 0; line-height:1.5; }
 .push-settings button { min-height:44px; padding:.65rem 1rem; background:#008eac; color:white; border-radius:6px; }
+
+.guest-intro { margin-bottom:1rem; line-height:1.5; color:#607583; }
+.browse-back { min-height:44px; color:#006f88; text-align:left; margin-bottom:.5rem; }
+.date-search-row { display:flex; flex-wrap:wrap; gap:1rem; margin-top:1rem; align-items:end; }
+.date-search-row label { flex:1 1 140px; min-width:0; display:grid; gap:.4rem; }
+.date-search-row input { width:100%; min-width:0; min-height:44px; font-size:16px; background:white; border:1px solid #d6e1e6; border-radius:6px; padding:.65rem; }
+.date-search-row button,.listing-calendar li button { min-height:44px; padding:.5rem; color:#006f88; text-decoration:underline; }
+.search-date-help { font-size:.85rem; color:#607583; margin:.6rem 0; line-height:1.5; }
+.period-price { margin:.8rem 0; font-size:1rem; }
+.calendar-dialog { max-height:calc(100dvh - 1rem); overflow-y:auto; }
+.listing-calendar { margin:1rem 0; padding:1rem; border:1px solid #d6e1e6; border-radius:8px; min-width:0; }
+.listing-calendar p { margin:.6rem 0; line-height:1.5; }
+.listing-calendar .group\/calendar { margin:auto; max-width:100%; --cell-size:clamp(32px,8vw,44px); }
+.listing-calendar li { display:flex; align-items:center; flex-wrap:wrap; justify-content:space-between; gap:.5rem; border-top:1px solid #d6e1e6; padding:.5rem 0; }
+.calendar-action { min-height:44px; background:#008eac; color:white; padding:.6rem 1rem; border-radius:6px; margin:1rem 0; }
+.calendar-action:disabled { opacity:.5; }
+@media(max-width:639px) { .listing-calendar { padding:.65rem; } .app-header-inner { gap:.5rem; } }
+
+/* Discovery, shared calendar and community controls */
+.extra-panel { padding:1rem; margin:1rem 0; border:1px solid var(--border); border-radius:8px; background:#f8fbfc; min-width:0; overflow-wrap:anywhere; }
+.extra-panel h3 { font-size:1.05rem; font-weight:700; margin-bottom:.6rem; }
+.extra-panel p,.wanted-board>p { line-height:1.55; margin:.6rem 0; }
+.extra-panel form { display:grid; gap:.85rem; margin-top:.8rem; }
+.extra-panel label { display:grid; gap:.4rem; font-size:1rem; }
+.extra-panel input:not([type=checkbox]),.extra-panel textarea,.extra-panel select { min-height:44px; width:100%; min-width:0; font-size:16px; padding:.65rem; background:white; border:1px solid var(--border); border-radius:6px; }
+.extra-panel textarea { min-height:90px; resize:vertical; }
+.extra-panel button,.wanted-link,.favorites-toggle { min-height:44px; padding:.65rem .85rem; border:1px solid #008eac; border-radius:6px; color:#006f88; background:white; margin:.25rem .4rem .25rem 0; font-weight:600; }
+.extra-panel button:disabled,.heart-button:disabled { opacity:.5; cursor:wait; }
+.extra-panel summary { cursor:pointer; min-height:44px; padding:.65rem 0; font-weight:700; }
+.extra-panel article+article { border-top:1px solid var(--border); padding-top:.75rem; margin-top:.75rem; }
+.extra-panel [role=alert] { color:#a92d2d; }
+.extra-panel label:has(input[type=checkbox]) { display:flex; align-items:center; gap:.6rem; }
+.extra-panel input[type=checkbox] { width:20px; height:20px; flex-shrink:0; }
+.wanted-link { display:flex; align-items:center; gap:.6rem; text-align:left; margin:1rem 0; }
+.listing-card { position:relative; }
+.listing-card-main { width:100%; display:block; text-align:left; height:100%; }
+.listing-card>.heart-button { position:absolute; right:.75rem; top:.75rem; width:44px; height:44px; border-radius:50%; display:grid; place-items:center; background:white; color:#006f88; border:1px solid var(--border); z-index:1; }
+.listing-specs { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.8rem; margin:1rem 0; }
+.listing-specs dt { color:#607583; font-size:.85rem; }.listing-specs dd { font-weight:600; overflow-wrap:anywhere; }
+.agreement-addenda { margin:.5rem 0; padding:.5rem; border:1px solid var(--border); }.agreement-addenda p { margin:.3rem 0; }
+@media(max-width:639px) { .extra-panel { padding:.8rem; }.listing-specs { grid-template-columns:1fr; }.extra-panel button { max-width:100%; }.wanted-board { min-width:0; } }
+
+.discovery-toolbar button { display:flex; align-items:center; gap:.5rem; min-height:44px; padding:.65rem .85rem; color:#006f88; border:1px solid var(--border); background:white; border-radius:6px; }

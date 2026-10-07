@@ -37,3 +37,8 @@ export async function saveCircleProfile(user: User, profile: Profile, preferredL
   const data = await response.json() as {error?:string};
   if (!response.ok) throw new Error(data.error || "Profilen kunne ikke gemmes.");
 }
+
+export async function saveCircleLanguage(user:User,preferredLanguage:Lang) {
+  const response=await fetch("/api/profile",{method:"PATCH",headers:{"content-type":"application/json",authorization:`Bearer ${await user.getIdToken()}`},body:JSON.stringify({preferredLanguage})});
+  if(!response.ok)throw Error("LANGUAGE_SAVE_FAILED");
+}

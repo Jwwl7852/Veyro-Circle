@@ -28,6 +28,15 @@ service cloud.firestore {
     match /pushDevices/{deviceId} {
       allow read, write: if false;
     }
+    // Community data is exposed only through scoped, verified server endpoints.
+    match /circlePreferences/{uid} { allow read, write: if false; }
+    match /reviews/{id} { allow read, write: if false; }
+    match /wanted/{id} { allow read, write: if false; }
+    match /wantedLocks/{uid} { allow read, write: if false; }
+    match /listingCalendars/{listingId} {
+      allow read, write: if false;
+    }
+    match /listingLocks/{uid} { allow read, write: if false; }
     match /bookingLocks/{listingId} {
       allow read, write: if false;
     }
@@ -37,7 +46,8 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
     match /agreements/{agreementId} {
-      allow read: if signedIn() && request.auth.uid in resource.data.participantUids;
+      // Server API redacts contacts until owner approval, including legacy requests.
+      allow read: if false;
       // Aftaler og alle fire underskrifter skrives kun via den verificerede server-API.
       allow create, update, delete: if false;
 

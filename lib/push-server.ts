@@ -4,13 +4,13 @@ import { serverConfig } from "@/lib/server-config";
 
 export const pushId = (token:string) => createHash("sha256").update(token).digest("hex");
 export function validPushToken(token:unknown):token is string { return typeof token === "string" && token.length >= 20 && token.length <= 4096 && /^[A-Za-z0-9_:\-]+$/.test(token); }
-export function pushPayload(kind:"requested"|"message",id:string,lang:string) {
-  return { title:"Veyro Circle", body:lang === "sv" ? (kind === "message" ? "Du har fått ett nytt meddelande i Circle." : "Du har fått en ny låneförfrågan i Circle.") : (kind === "message" ? "Du har fået en ny besked i Circle." : "Du har fået en ny låneforespørgsel i Circle."), url:`/?ticket=${encodeURIComponent(id)}&push=${kind}`, tag:`circle-${id}-${kind}` };
+export function pushPayload(kind:"requested"|"message"|"search",id:string,lang:string) {
+  return { title:"Veyro Circle", body:kind === "search" ? (lang === "sv" ? "En ny annons matchar din sparade sökning." : "En ny annonce matcher din gemte søgning.") : lang === "sv" ? (kind === "message" ? "Du har fått ett nytt meddelande i Circle." : "Du har fått en ny låneförfrågan i Circle.") : (kind === "message" ? "Du har fået en ny besked i Circle." : "Du har fået en ny låneforespørgsel i Circle."), url:kind === "search" ? `/?listing=${encodeURIComponent(id)}&push=search` : `/?ticket=${encodeURIComponent(id)}&push=${kind}`, tag:`circle-${id}-${kind}` };
 }
 
 // Only called after a successful server-authorised write; no client-selected recipients.
 // Push is best effort: an unavailable push service must never undo a saved message.
-export async function sendCirclePush(uid:string,kind:"requested"|"message",id:string) {
+export async function sendCirclePush(uid:string,kind:"requested"|"message"|"search",id:string) {
   if (process.env.CIRCLE_PUSH_ENABLED !== "true") return;
   try {
     const project=serverConfig("NEXT_PUBLIC_FIREBASE_PROJECT_ID");

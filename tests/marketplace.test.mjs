@@ -76,10 +76,10 @@ test("address check works for recognized Danish and Swedish postcodes", () => {
   assert.equal(m.validAddress("Storgatan", se), false);
   assert.equal(m.validAddress("Skellet 8", {...dk, city:"Forkert by"}), false);
 });
-test("listing plans allow 1 free and never more than 20 active things", () => {
-  assert.equal(m.FREE_LISTING_LIMIT, 1);
+test("listing plans require Plus and never allow more than 20 active things", () => {
+  assert.equal(m.FREE_LISTING_LIMIT, 0);
   assert.equal(m.PLUS_LISTING_LIMIT, 20);
-  assert.equal(m.canCreateListing(0, "free"), true);
+  assert.equal(m.canCreateListing(0, "free"), false);
   assert.equal(m.canCreateListing(1, "free"), false);
   assert.equal(m.canCreateListing(19, "plus"), true);
   assert.equal(m.canCreateListing(20, "plus"), false);

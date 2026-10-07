@@ -1,11 +1,15 @@
+import { after } from "next/server";
+import { notifyListingMatches } from "@/lib/search-alerts";
+import type { Place } from "@/lib/marketplace";
+import { cleanDetails } from "@/lib/listing-details";
 import { NextResponse } from "next/server";
-import { firestoreDocumentUrl, getFirestoreDocument, getServerProfile, serviceToken, verifyFirebaseRequest } from "@/lib/firebase-server";
+import { commitFirestoreWrites, firestoreDocumentName, firestoreDocumentUrl, getFirestoreDocument, getServerProfile, serviceToken, verifyFirebaseRequest } from "@/lib/firebase-server";
 import { serverConfig } from "@/lib/server-config";
 
 type JsonValue = null | boolean | number | string | JsonValue[] | { [key:string]:JsonValue };
 type FirestoreValue = { nullValue?:null; booleanValue?:boolean; integerValue?:string; doubleValue?:number; stringValue?:string; timestampValue?:string; arrayValue?:{values?:FirestoreValue[]}; mapValue?:{fields?:Record<string,FirestoreValue>} };
 type Photo = {src?:string;storagePath?:string;name?:string;bytes?:number;width?:number;height?:number};
-type ListingPayload = {id?:string;name?:string;description?:string;category?:string;country?:string;city?:string;place?:Record<string,JsonValue>;dailyPrice?:number;deposit?:number;photos?:Photo[]};
+type ListingPayload = {id?:string;name?:string;description?:string;category?:string;country?:string;city?:string;place?:Record<string,JsonValue>;dailyPrice?:number;deposit?:number;photos?:Photo[];details?:Record<string,string>};
 
 const categories = new Set(["transport","tools","garden","leisure","party","kitchen","bike"]);
 function error(message:string, status=400) { return NextResponse.json({error:message},{status}); }
@@ -43,6 +47,7 @@ export async function POST(request:Request) {
   try {
     const identity = await verifyFirebaseRequest(request);
     const profile = await getServerProfile(identity.localId);
+    if(profile.subscriptionPlan!=="plus")return error("Circle Plus kræves for at oprette og udgive annoncer. 49 DKK eller 69 SEK pr. måned for op til 20 aktive ting.",403);
     const body = await request.json() as {listing?:ListingPayload};
     const listing = body.listing;
     const id = listing?.id ?? "";
@@ -63,41 +68,46 @@ export async function POST(request:Request) {
     // Older clients must not erase an owner's deposit by omitting the field.
     const deposit = listing?.deposit ?? (existing?.fields?.deposit ? decode(existing.fields.deposit) : 0);
     if (typeof deposit !== "number" || !Number.isSafeInteger(deposit) || deposit < 0 || deposit > 10_000_000) return error("Depositum skal være mellem 0 og 100.000 kr. med højst to decimaler.");
+    const listingLock=!existing?await getFirestoreDocument(`listingLocks/${identity.localId}`):null;
     if (!existing) {
       const current = await ownerListings(identity.localId);
       const activeCount = current.filter(item => item.data.active !== false).length;
-      const limit = profile.subscriptionPlan === "plus" ? 20 : 1;
-      if (activeCount >= limit) return error(profile.subscriptionPlan === "plus" ? "Du kan højst have 20 aktive annoncer." : "Gratis medlemskab giver plads til én aktiv annonce. Opgradér til Circle Plus for flere.",409);
+      const limit = 20;
+      if (activeCount >= limit) return error("Du kan højst have 20 aktive annoncer.",409);
     }
     const now = new Date().toISOString();
     const data:Record<string,JsonValue> = {
       ownerUid:identity.localId, owner:profile.name.split(/\s+/)[0],
       name, description, category:listing!.category!, country, city:String(place.city), place,
-      dailyPrice:listing!.dailyPrice!, deposit, photos:photos as unknown as JsonValue[], active:true,
+      dailyPrice:listing!.dailyPrice!, deposit, details:cleanDetails(listing!.category!,listing?.details ?? (existing?.fields?.details ? decode(existing.fields.details) : {})), photos:photos as unknown as JsonValue[], active:true,
     };
     const fields = Object.fromEntries(Object.entries(data).map(([key,value])=>[key,encode(value)]));
     fields.updatedAt = {timestampValue:now};
     fields.createdAt = existing?.fields?.createdAt ?? {timestampValue:now};
-    const response = await fetch(firestoreDocumentUrl(`listings/${id}`), {method:"PATCH",headers:{authorization:`Bearer ${await serviceToken()}`,"content-type":"application/json"},body:JSON.stringify({fields})});
-    if (!response.ok) throw new Error("Annoncen kunne ikke gemmes i Firebase.");
+    const writes:unknown[]=[{update:{name:firestoreDocumentName(`listings/${id}`),fields},currentDocument:existing?{updateTime:existing.updateTime}:{exists:false}}];
+    if(!existing)writes.push({update:{name:firestoreDocumentName(`listingLocks/${identity.localId}`),fields:{updatedAt:{timestampValue:now}}},currentDocument:listingLock?{updateTime:listingLock.updateTime}:{exists:false}});
+    await commitFirestoreWrites(writes);
+    if(!existing) after(()=>notifyListingMatches(id,identity.localId,{name,description,country,category:listing!.category!,dailyPrice:listing!.dailyPrice!,place:place as unknown as Place,city:String(place.city)}));
     return NextResponse.json({ok:true,id});
   } catch (cause) {
     const message = cause instanceof Error ? cause.message : "Annoncen kunne ikke gemmes.";
-    return error(message, message.includes("logget") || message.includes("session") ? 401 : 500);
+    return error(message, message === "IDENTITY_CONFLICT" ? 409 : message.includes("logget") || message.includes("session") ? 401 : 500);
   }
 }
 
 export async function GET(request:Request) {
   try {
-    await verifyFirebaseRequest(request);
+    const identity=await verifyFirebaseRequest(request);
     const id = new URL(request.url).searchParams.get("id") ?? "";
     if (!/^[A-Za-z0-9_-]{20,80}$/.test(id)) return error("Annonce-ID'et er ugyldigt.");
     const listing = await getFirestoreDocument(`listings/${id}`);
     const ownerUid = listing?.fields?.ownerUid?.stringValue;
     if (!ownerUid || listing?.fields?.active?.booleanValue === false) return error("Annoncen findes ikke længere.",404);
+    // Counterparty contact is available only in a server-approved agreement.
+    if(ownerUid!==identity.localId)return error("Kontaktoplysninger vises først i en godkendt aftale.",403);
     const profile = await getServerProfile(ownerUid);
     if (!profile.name || !profile.street || !profile.phone || !profile.place.id) return error("Ejerens profil er ikke komplet.",409);
-    return NextResponse.json({contact:{name:profile.name,street:profile.street,phone:profile.phone,place:profile.place}});
+    return NextResponse.json({contact:{name:profile.name,street:profile.street,phone:profile.phone,place:profile.place}},{headers:{"cache-control":"private, no-store"}});
   } catch (cause) { return error(cause instanceof Error ? cause.message : "Ejerens aftaleoplysninger kunne ikke hentes.",500); }
 }
 
