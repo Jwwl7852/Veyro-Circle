@@ -19,7 +19,7 @@ import {
   SprayCan, Heart, Home, ImagePlus, Languages, MapPin, Map as MapIcon, MessageCircle,
   PackagePlus, PartyPopper, Pencil, Search, ShieldCheck, Sparkles, Star, TentTree,
   Trash2, Truck, Utensils, Wrench, X, Crown, FileSignature, Printer, LockKeyhole,
-  LogOut, LoaderCircle, Send, Save,
+  LogOut, LoaderCircle, Send, Save, RefreshCw,
 } from "lucide-react";
 import { toast, Toaster } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -871,10 +871,14 @@ function RequestsView({ t, loans, lang, userUid, loading, loadError, direction, 
   const visible = own.filter(loan=>isArchived(loan) === archive && `${loan.id} ${loan.item.name} ${loan.borrower.name} ${loan.item.owner}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
   return <div className="content-panel loans-panel">
     <h1 className="sr-only">{t.requests}</h1>
-    <div className="loans-heading"><Button variant="outline" onClick={agreementsChanged}>{da ? "Opdatér" : "Uppdatera"}</Button></div>
-    <div className="loan-filters" role="group" aria-label={da ? "Låner eller ejer" : "Låntagare eller ägare"}>{(["borrower","lender"] as const).map(role=><button key={role} aria-pressed={direction === role} onClick={()=>setDirection(role)}>{role === "borrower" ? (da ? "Jeg låner" : "Jag lånar") : (da ? "Jeg udlåner" : "Jag lånar ut")} <b>{loans.filter(l=>(role === "borrower" ? l.borrowerUid : l.lenderUid) === userUid && !isArchived(l)).length}</b></button>)}</div>
-    <div className="loan-filters" role="group" aria-label={da ? "Aktive eller arkiv" : "Aktiva eller arkiv"}><button aria-pressed={!archive} onClick={()=>setArchive(false)}>{da ? "Aktuelle" : "Aktuella"}</button><button aria-pressed={archive} onClick={()=>setArchive(true)}>{da ? "Arkiv · 12 måneder" : "Arkiv · 12 månader"}</button></div>
-    <label className="field-label">{da ? "Find en aftale" : "Hitta ett avtal"}<input value={search} onChange={event=>setSearch(event.target.value)} placeholder={da ? "Genstand, navn eller ticketnummer" : "Föremål, namn eller ticketnummer"} /></label>
+    <div className="loans-heading">
+      <div className="loan-filters loan-direction" role="group" aria-label={da ? "Låner eller ejer" : "Låntagare eller ägare"}>{(["borrower","lender"] as const).map(role=><button type="button" key={role} aria-pressed={direction === role} onClick={()=>setDirection(role)}><span>{role === "borrower" ? (da ? "Jeg låner" : "Jag lånar") : (da ? "Jeg udlåner" : "Jag lånar ut")}</span><b>{loans.filter(l=>(role === "borrower" ? l.borrowerUid : l.lenderUid) === userUid && !isArchived(l)).length}</b></button>)}</div>
+      <Button type="button" variant="ghost" className="loan-refresh" disabled={loading} onClick={agreementsChanged}><RefreshCw size={16} aria-hidden="true" /><span>{da ? "Opdatér" : "Uppdatera"}</span></Button>
+    </div>
+    <div className="loan-toolbar">
+      <div className="loan-filters loan-period" role="group" aria-label={da ? "Aktive eller arkiv" : "Aktiva eller arkiv"}><button type="button" aria-pressed={!archive} onClick={()=>setArchive(false)}>{da ? "Aktuelle" : "Aktuella"}</button><button type="button" aria-pressed={archive} onClick={()=>setArchive(true)}>{da ? "Arkiv" : "Arkiv"}<span className="loan-retention">{da ? "12 mdr." : "12 mån."}</span><span className="sr-only">{da ? "12 måneder" : "12 månader"}</span></button></div>
+      <label className="loan-search"><span className="sr-only">{da ? "Find en aftale" : "Hitta ett avtal"}</span><Search size={18} aria-hidden="true" /><input type="search" value={search} onChange={event=>setSearch(event.target.value)} placeholder={da ? "Søg på genstand, navn eller ticket" : "Sök på föremål, namn eller ticket"} /></label>
+    </div>
     {loading && <p role="status">{da ? "Henter dine aftaler…" : "Hämtar dina avtal…"}</p>}
     {loadError && <p className="agreements-load-note" role="alert">{da ? "Aftalerne kunne ikke opdateres. Viste oplysninger kan være forældede. Prøv Opdatér igen." : "Avtalen kunde inte uppdateras. Uppgifterna kan vara inaktuella. Försök uppdatera igen."}</p>}
     <div className="mt-6 space-y-4">

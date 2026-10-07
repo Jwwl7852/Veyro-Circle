@@ -170,5 +170,10 @@ test("map and loans omit visible page titles but retain accessible headings",asy
     assert.ok(html.includes(`<h1 class="sr-only">${title}</h1>`));
     assert.doesNotMatch(html,/Veyro Circle|class="page-title"|class="eyebrow"/);
     assert.ok(html.includes(refresh));
+    assert.match(html,/class="loan-filters loan-direction"/);
+    assert.match(html,/class="loan-toolbar"/);
+    assert.match(html,/class="loan-search"/);
+    assert.match(html,/type="search"/);
+    assert.match(html,/class="loan-retention"/);
   }
 });
