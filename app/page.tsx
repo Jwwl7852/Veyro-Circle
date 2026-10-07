@@ -36,7 +36,7 @@ import {
   SprayCan, Heart, Home, ImagePlus, Languages, MapPin, Map as MapIcon, MessageCircle,
   PackagePlus, PartyPopper, Pencil, Search, ShieldCheck, Sparkles, TentTree,
   Trash2, Truck, Utensils, Wrench, X, Crown, FileSignature, Printer, LockKeyhole,
-  LogOut, LoaderCircle, Send, Save, RefreshCw,
+  LogOut, LoaderCircle, Send, Save, RefreshCw, List, LayoutGrid,
 } from "lucide-react";
 import { toast, Toaster } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -50,7 +50,7 @@ import {
 } from "@/components/ui/alert-dialog";
 
 type Lang = "da" | "sv";
-type Tab = "wanted" | "home" | "map" | "items" | "requests" | "profile" | "subscription";
+type Tab = "saved" | "wanted" | "home" | "map" | "items" | "requests" | "profile" | "subscription";
 type AgreementSignature = { dataUrl: string; signedAt: string };
 type Loan = WorkflowAgreement & AgreementPhotos & AgreementSchedule & { id: string; item: Listing; from: string; to: string; days: number; total: number; deposit: number; message: string; handoverNote?: string; returnNote?: string; borrower: Profile; borrowerUid?: string; lenderUid?: string; borrowerSignature?: AgreementSignature; lenderSignature?: AgreementSignature; borrowerReturnSignature?: AgreementSignature; lenderReturnSignature?: AgreementSignature; returnedAt?: string; returnCondition?: "good" | "remarks"; saved?: boolean };
 type Listing = {
@@ -152,6 +152,7 @@ export default function HomePage() {
   useEffect(()=>{document.documentElement.lang=lang;},[lang]);
   const [prefs,setPrefs]=useState<Preferences>({favorites:[],searches:[]});
   const [onlyFavorites,setOnlyFavorites]=useState(false);
+  const [listingView,setListingView]=useState<"list"|"kanban">("kanban");
   const [favoriteBusy,setFavoriteBusy]=useState<string|null>(null);
   const [authOpen,setAuthOpen]=useState(false);
   const [calendarItem,setCalendarItem]=useState<Listing|null>(null);
@@ -659,7 +660,8 @@ export default function HomePage() {
             <nav className="space-y-1" aria-label="Hovedmenu">
               <SideNav icon={Home} label={t.navHome} active={tab === "home" && !onlyFavorites} onClick={openHome} />
               <SideNav icon={MapIcon} label={lang === "da" ? "Kort" : "Karta"} active={tab === "map"} onClick={() => navigate("map")} />
-              <SideNav icon={Search} label={lang === "da" ? "Gemte søgninger" : "Sparade sökningar"} active={tab === "wanted"} onClick={() => navigate("wanted")} />
+              <SideNav icon={Search} label={lang === "da" ? "Gemte søgninger" : "Sparade sökningar"} active={tab === "saved"} onClick={() => navigate("saved")} />
+              <SideNav icon={Search} label={lang === "da" ? "Efterlysning" : "Efterlysning"} active={tab === "wanted"} onClick={() => navigate("wanted")} />
               <SideNav icon={ImagePlus} label={t.navItems} active={tab === "items"} onClick={() => navigate("items")} />
               <SideNav icon={CalendarDays} label={t.navRequests} active={tab === "requests"} badge={awaitingCount ? String(awaitingCount) : undefined} onClick={() => navigate("requests")} />
               <SideNav icon={Heart} label={lang === "da" ? "Mine favoritter" : "Mina favoriter"} active={tab === "home" && onlyFavorites} onClick={openFavorites} />
@@ -692,7 +694,7 @@ export default function HomePage() {
               </div>
             </section>
 
-            <section className="search-filters" aria-label={lang === "da" ? "Søgeområde og pris" : "Sökområde och pris"}>
+            <section className="search-filters compact-search" aria-label={lang === "da" ? "Søgeområde og pris" : "Sökområde och pris"}>
               <div className="specific-search">
                 <label htmlFor="specific-listing-search">{lang === "da" ? "Hvad søger du efter?" : "Vad söker du efter?"}</label>
                 <div>
@@ -717,6 +719,7 @@ export default function HomePage() {
                   </Select>
                 </div>
               </div>
+              <details className="search-dates"><summary>{lang === "da" ? "Vælg datoer (valgfrit)" : "Välj datum (valfritt)"}{datesEntered ? ` · ${searchFrom} – ${searchTo}` : ""}</summary>
               <div className="date-search-row">
                 <label>{lang === "da" ? "Fra dato" : "Från datum"}<input type="date" min={today} value={searchFrom} onChange={e=>setSearchFrom(e.target.value)} /></label>
                 <label>{lang === "da" ? "Til dato" : "Till datum"}<input type="date" min={searchFrom||today} value={searchTo} onChange={e=>setSearchTo(e.target.value)} /></label>
@@ -726,10 +729,12 @@ export default function HomePage() {
               {datesEntered && !searchDatesValid && <p role="status">{lang === "da" ? "Vælg begge datoer fra i dag, højst 366 dage og inden for de næste to år." : "Välj båda datumen från i dag, högst 366 dagar och inom de kommande två åren."}</p>}
               {datePending && <p role="status">{lang === "da" ? "Kontrollerer ledige datoer…" : "Kontrollerar lediga datum…"}</p>}
               {dateFailed && <p role="alert">{lang === "da" ? "Ledighed kunne ikke kontrolleres. Prøv igen eller ryd datoerne." : "Tillgängligheten kunde inte kontrolleras. Försök igen eller rensa datumen."} <button onClick={()=>setCalendarRevision(v=>v+1)}>{lang === "da" ? "Prøv igen" : "Försök igen"}</button></p>}
+              </details>
               <div className="filter-explanation">
                 <span>{origin ? (lang === "da" ? `Udgangspunkt: ${origin.postcode} ${origin.city}. Afstand i luftlinje mellem postområder.` : `Utgångspunkt: ${origin.postcode} ${origin.city}. Fågelväg mellan postområden.`) : (lang === "da" ? "Vælg et postnummer/by fra listen for at bruge radius." : "Välj ett postnummer/ort från listan för att använda radie.")}</span>
                 {profile && <button onClick={()=>setOrigin(profile.place)}>{lang === "da" ? "Brug min by" : "Använd min ort"}</button>}
               </div>
+              <SavedSearches mode="save" lang={lang} prefs={prefs} filter={savedFilter} onChange={setPrefs} onApply={applySearch} items={listings} onLogin={user ? undefined : ()=>setAuthOpen(true)} />
             </section>
             <div className="mt-4 flex flex-wrap items-center gap-2">
               <button className={`country-pill ${country === "ALL" ? "active" : ""}`} onClick={() => setCountry("ALL")}><MapPin size={17} />{t.nearby}</button>
@@ -747,11 +752,13 @@ export default function HomePage() {
             <div className="mb-4 mt-7 flex items-end justify-between">
               <div><p className="text-sm font-bold uppercase tracking-[0.14em] text-[#777b90]">{`${filtered.length} ${t.results}`}{radius !== "all" ? ` · ${radius} km` : ""}</p><h2 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">{onlyFavorites ? (lang === "da" ? "Mine favoritter" : "Mina favoriter") : t.popular}</h2></div>
             </div>
-            {listingsLoading ? <p role="status">{lang === "da" ? "Henter annoncer…" : "Hämtar annonser…"}</p> : listingsError ? <p role="alert">{lang === "da" ? "Annoncerne kunne ikke hentes. Genindlæs siden." : "Annonserna kunde inte hämtas. Ladda om sidan."}</p> : datePending || dateFailed || (datesEntered && !searchDatesValid) ? null : filtered.length ? <div className="listing-grid">{filtered.map((item) => <ListingCard key={item.id} item={item} lang={lang} freeLabel={priceLabel(item, lang)} periodDays={searchDays} favorite={prefs.favorites.includes(item.id)} busy={favoriteBusy===item.id} onFavorite={()=>void favorite(item)} onOpen={() => setSelected(item)} />)}</div> :
+            <div className="listing-view-toggle" role="group" aria-label={lang === "da" ? "Visning af annoncer" : "Annonsvisning"}><button aria-pressed={listingView === "list"} onClick={()=>setListingView("list")}><List size={18}/>{lang === "da" ? "Listevisning" : "Listvy"}</button><button aria-pressed={listingView === "kanban"} onClick={()=>setListingView("kanban")}><LayoutGrid size={18}/>Kanban</button></div>
+            {listingsLoading ? <p role="status">{lang === "da" ? "Henter annoncer…" : "Hämtar annonser…"}</p> : listingsError ? <p role="alert">{lang === "da" ? "Annoncerne kunne ikke hentes. Genindlæs siden." : "Annonserna kunde inte hämtas. Ladda om sidan."}</p> : datePending || dateFailed || (datesEntered && !searchDatesValid) ? null : filtered.length ? <div className={`listing-grid ${listingView === "list" ? "listing-list" : ""}`}>{filtered.map((item) => <ListingCard key={item.id} item={item} lang={lang} freeLabel={priceLabel(item, lang)} periodDays={searchDays} favorite={prefs.favorites.includes(item.id)} busy={favoriteBusy===item.id} onFavorite={()=>void favorite(item)} onOpen={() => setSelected(item)} />)}</div> :
               <div className="rounded-xl border border-dashed border-[#cbd0dd] bg-white px-6 py-16 text-center"><Search className="mx-auto mb-4 text-[#85899b]" size={34} /><p className="font-bold">{t.noResults}</p></div>}
           </>}
 
-          {tab === "wanted" && <div className="content-panel"><h1 className="sr-only">{lang === "da" ? "Gemte søgninger" : "Sparade sökningar"}</h1><button className="browse-back" onClick={()=>setTab("home")}>{lang === "da" ? "Tilbage til søgning og søgeområde" : "Tillbaka till sökning och sökområde"}</button>{user && <SavedSearches lang={lang} prefs={prefs} filter={savedFilter} onChange={setPrefs} onApply={applySearch} items={listings} />}<WantedBoard lang={lang} uid={user?.uid} origin={origin} radius={radius} items={listings} onLogin={()=>setAuthOpen(true)} onOpen={id=>{const item=listings.find(i=>i.id===id);if(item)setSelected(item);else toast.info(lang==="da"?"Annoncen er ikke længere tilgængelig.":"Annonsen är inte längre tillgänglig.");}} /></div>}
+          {tab === "saved" && <div className="content-panel">{user && <SavedSearches lang={lang} prefs={prefs} filter={savedFilter} onChange={setPrefs} onApply={applySearch} items={listings} />}</div>}
+          {tab === "wanted" && <div className="content-panel"><h1 className="sr-only">Efterlysning</h1><WantedBoard lang={lang} uid={user?.uid} origin={origin} radius={radius} items={listings} onLogin={()=>setAuthOpen(true)} onOpen={id=>{const item=listings.find(i=>i.id===id);if(item)setSelected(item);else toast.info(lang==="da"?"Annoncen er ikke længere tilgængelig.":"Annonsen är inte längre tillgänglig.");}} /></div>}
           {tab === "map" && <div className="map-page"><h1 className="sr-only">{lang === "da" ? "Kort" : "Karta"}</h1>{profile ? <CommunityMap origin={profile.place} radiusKm={100} lang={lang} /> : <div className="content-panel"><p>{lang === "da" ? "Udfyld din profil for at se kortet med udgangspunkt i dit postnummer." : "Fyll i din profil för att se kartan med utgångspunkt i ditt postnummer."}</p><Button className="mt-4" onClick={()=>setTab("profile")}>{lang === "da" ? "Gå til konto" : "Gå till konto"}</Button></div>}</div>}
           {tab === "items" && <ItemsView lang={lang} profile={profile} listings={listings.filter(item => item.owned)} plan={listingPlan} onAdd={openAdd} onEdit={openEdit} onDelete={setPendingDelete} onCalendar={setCalendarItem} />}
           {tab === "requests" && <><div className="discovery-toolbar"><button onClick={openFavorites}><Heart size={18}/>{lang === "da" ? "Mine favoritter" : "Mina favoriter"}</button></div><RequestsView t={t} loans={loans} lang={lang} userUid={user?.uid ?? ""} loading={agreementsLoading} loadError={agreementsError} direction={loanDirection} setDirection={setLoanDirection} archive={loanArchive} setArchive={setLoanArchive} onChat={setChatLoan} onAgreement={openAgreement} onDecision={(loan,action)=>setPendingDecision({loan,action})} /></>}
@@ -786,7 +793,8 @@ export default function HomePage() {
       <nav className="mobile-nav" aria-label="Mobilmenu">
         <MobileNav icon={Home} label={t.navHome} active={tab === "home" && !onlyFavorites} onClick={openHome} />
         <MobileNav icon={MapIcon} label={lang === "da" ? "Kort" : "Karta"} active={tab === "map"} onClick={() => navigate("map")} />
-        <MobileNav icon={Search} label={lang === "da" ? "Gemte søgninger" : "Sparade sökningar"} active={tab === "wanted"} onClick={() => navigate("wanted")} />
+        <MobileNav icon={Search} label={lang === "da" ? "Gemte søgninger" : "Sparade sökningar"} active={tab === "saved"} onClick={() => navigate("saved")} />
+        <MobileNav icon={Search} label={lang === "da" ? "Efterlysning" : "Efterlysning"} active={tab === "wanted"} onClick={() => navigate("wanted")} />
         <MobileNav icon={ImagePlus} label={t.navItems} active={tab === "items"} onClick={() => navigate("items")} />
         <button className="add-mobile" onClick={openAdd} aria-label={t.addItem}><PackagePlus size={25} /></button>
         <MobileNav icon={CalendarDays} label={t.navRequests} active={tab === "requests"} badge={requestSent} onClick={() => navigate("requests")} />
