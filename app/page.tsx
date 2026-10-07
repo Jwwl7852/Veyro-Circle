@@ -764,9 +764,8 @@ export default function HomePage() {
           <div className="sticky top-24 space-y-4">
             <div className="sharing-info">
               <h2>{lang === "da" ? "Enkel og ærlig pris" : "Enkelt och tydligt pris"}</h2>
-              <p><b>{lang === "da" ? "Gratis at søge og låne" : "Gratis att söka och låna"}</b>{lang === "da" ? "Det koster ikke noget at finde ting eller sende en forespørgsel." : "Det kostar inget att hitta saker eller skicka en förfrågan."}</p>
+              <p><b>{lang === "da" ? "Gratis at søge og forespørge" : "Gratis att söka och skicka förfrågningar"}</b>{lang === "da" ? "Det koster ikke noget at finde ting eller sende en forespørgsel." : "Det kostar inget att hitta saker eller skicka en förfrågan."}</p>
               <p><b>{lang === "da" ? "Annoncer kræver Circle Plus" : "Annonser kräver Circle Plus"}</b>{lang === "da" ? "Op til 20 aktive ting for 49 DKK eller 69 SEK om måneden." : "Upp till 20 aktiva saker för 49 DKK eller 69 SEK per månad."}</p>
-              <p><b>Veyro Circle Plus</b>{lang === "da" ? "49 DKK om måneden for op til 20 aktive annoncer. Sikker betaling via Stripe." : "69 SEK per månad för upp till 20 aktiva annonser. Säker betalning via Stripe."}</p>
               <p className="muted">{lang === "da" ? "Veyro Circle tager ingen provision af den private lejeaftale." : "Veyro Circle tar ingen provision på den privata hyresaffären."}</p>
             </div>
             <div className="rounded-xl border border-[#dde1ec] bg-white p-5">
