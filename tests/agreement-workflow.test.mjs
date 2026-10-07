@@ -217,7 +217,7 @@ function setup() {
   dependencies["@/lib/firestore-values"]=load("../lib/firestore-values.ts");
   dependencies["@/lib/community-server"]=load("../lib/community-server.ts",dependencies);
   dependencies["@/lib/discovery"]=load("../lib/discovery.ts",{"./marketplace":market});
-  const communityApis=Object.fromEntries(["reviews","preferences","wanted","agreement-changes"].map(name=>[name,load(`../app/api/${name}/route.ts`,dependencies)]));
+  const communityApis=Object.fromEntries(["profile","reviews","preferences","wanted","agreement-changes"].map(name=>[name,load(`../app/api/${name}/route.ts`,dependencies)]));
   const communityCall=(api,method,uid,body,query="")=>communityApis[api][method](new Request("https://circle.test/api/"+api+query,{method,headers:{...(uid?{authorization:uid}:{}),"content-type":"application/json"},...(body?{body:JSON.stringify(body)}:{})}));
   const calendarApi=load("../app/api/availability/route.ts",dependencies);
   const api=load("../app/api/agreements/route.ts",dependencies);
@@ -236,7 +236,8 @@ function setup() {
   const listingCall=(uid,listing)=>listingApi.POST(new Request("https://circle.test/api/listings",{method:"POST",headers:{authorization:uid,"content-type":"application/json"},body:JSON.stringify({listing})}));
   const calendarCall=(uid,body)=>calendarApi.POST(new Request("https://circle.test/api/availability",{method:"POST",headers:{authorization:uid,"content-type":"application/json"},body:JSON.stringify(body)}));
   const publicCalendar=(ids)=>calendarApi.GET(new Request("https://circle.test/api/availability?ids="+ids));
-  return {communityCall,docs,put,value,call,photoCall,images,listingCall,pushes,calendarCall,publicCalendar};
+  const contactCall=uid=>listingApi.GET(new Request("https://circle.test/api/listings?id="+base.item.id,{headers:{authorization:uid}}));
+  return {contactCall,communityCall,docs,put,value,call,photoCall,images,listingCall,pushes,calendarCall,publicCalendar};
 }
 test("only listing owner sets deposit; old clients preserve it and invalid amounts fail",async()=>{
   const s=setup();
@@ -502,4 +503,35 @@ test("wanted post limit remains safe under concurrent creates",async()=>{
   for(let i=0;i<4;i++)assert.equal((await s.communityCall("wanted","POST","borrower",create)).status,200);
   const results=await Promise.all([1,2].map(()=>s.communityCall("wanted","POST","borrower",create)));
   assert.deepEqual(results.map(r=>r.status).sort(),[200,409]);assert.equal([...s.docs.keys()].filter(k=>k.startsWith("wanted/")).length,5);
+});
+
+test("contact information is absent before approval and released atomically by the real owner",async()=>{
+  const s=setup();assert.equal((await s.contactCall("borrower")).status,403);assert.equal((await s.contactCall("stranger")).status,403);assert.equal((await s.contactCall("owner")).status,200);
+  const created=await s.call("POST","borrower",{agreement:{...base,lender:{street:"Forged",phone:"123"},contactsReleased:true}});assert.equal(created.status,200);
+  const draft=(await created.json()).agreement;
+  assert.equal(draft.lender.street,"");assert.equal(draft.lender.phone,"");assert.equal(draft.borrower.street,"");assert.equal(draft.borrower.phone,"");assert.equal(draft.borrower.email,"");assert.equal(draft.contactsReleased,undefined);
+  assert.equal(s.value("agreements/"+base.id).lender.street,"");
+  assert.equal((await s.call("PATCH","borrower",{id:base.id,action:"accept"})).status,403);
+  assert.equal((await s.call("PATCH","owner",{id:base.id,action:"accept"})).status,200);
+  const approved=s.value("agreements/"+base.id);assert.equal(approved.contactsReleased,true);assert.equal(approved.lender.street,"Real Street 1");assert.equal(approved.lender.phone,"12345678");
+  const shown=(await (await s.call("GET","borrower")).json()).agreements[0];assert.equal(shown.lender.street,"Real Street 1");
+});
+test("legacy pending contacts are redacted in lists and duplicate request responses",async()=>{
+  const s=setup(),a={...base,borrower:{name:"Borrower",street:"Private B",phone:"111",email:"private@example.test",place:{}},lender:{name:"Owner",street:"Private O",phone:"222",place:{}}};s.put("agreements/"+base.id,a);
+  const shown=(await (await s.call("GET","borrower")).json()).agreements[0];assert.equal(shown.lender.street,"");assert.equal(shown.borrower.email,"");
+  const retry=await s.call("POST","borrower",{agreement:base});assert.equal(retry.status,200);assert.equal((await retry.json()).agreement.lender.phone,"");
+  for(const requestStatus of ["declined","cancelled"]){s.put("agreements/"+base.id,{...a,requestStatus});const data=(await (await s.call("GET","borrower")).json()).agreements[0];assert.equal(data.lender.street,"");}
+  assert.match(readFileSync(new URL("../firestore.rules",import.meta.url),"utf8"),/match \/agreements\/\{agreementId\} \{\s*\/\/[^\n]*\n\s*allow read: if false;/);
+});
+
+test("language changes update only the authenticated user's preference",async()=>{
+  const s=setup();s.put("users/borrower",{preferredLanguage:"da",name:"Kept",subscriptionPlan:"free"});
+  assert.equal((await s.communityCall("profile","PATCH","anonymous",{preferredLanguage:"sv"})).status,401);
+  assert.equal((await s.communityCall("profile","PATCH","borrower",{preferredLanguage:"en"})).status,400);
+  assert.equal((await s.communityCall("profile","PATCH","borrower",{preferredLanguage:"sv",uid:"owner",subscriptionPlan:"plus",name:"Changed"})).status,200);
+  const user=s.value("users/borrower");assert.equal(user.preferredLanguage,"sv");assert.equal(user.subscriptionPlan,"free");assert.equal(user.name,"Kept");assert.equal(s.docs.has("users/owner"),false);
+  assert.equal((await s.communityCall("profile","PATCH","borrower",{preferredLanguage:"da"})).status,200);
+  assert.equal(s.value("users/borrower").preferredLanguage,"da");
+  const source=readFileSync(new URL("../app/page.tsx",import.meta.url),"utf8");
+  assert.doesNotMatch(source,/\[configured, lang, user\?\.email, user\?\.emailVerified, user\?\.uid\]/);
 });

@@ -94,15 +94,17 @@ export async function POST(request:Request) {
 
 export async function GET(request:Request) {
   try {
-    await verifyFirebaseRequest(request);
+    const identity=await verifyFirebaseRequest(request);
     const id = new URL(request.url).searchParams.get("id") ?? "";
     if (!/^[A-Za-z0-9_-]{20,80}$/.test(id)) return error("Annonce-ID'et er ugyldigt.");
     const listing = await getFirestoreDocument(`listings/${id}`);
     const ownerUid = listing?.fields?.ownerUid?.stringValue;
     if (!ownerUid || listing?.fields?.active?.booleanValue === false) return error("Annoncen findes ikke længere.",404);
+    // Counterparty contact is available only in a server-approved agreement.
+    if(ownerUid!==identity.localId)return error("Kontaktoplysninger vises først i en godkendt aftale.",403);
     const profile = await getServerProfile(ownerUid);
     if (!profile.name || !profile.street || !profile.phone || !profile.place.id) return error("Ejerens profil er ikke komplet.",409);
-    return NextResponse.json({contact:{name:profile.name,street:profile.street,phone:profile.phone,place:profile.place}});
+    return NextResponse.json({contact:{name:profile.name,street:profile.street,phone:profile.phone,place:profile.place}},{headers:{"cache-control":"private, no-store"}});
   } catch (cause) { return error(cause instanceof Error ? cause.message : "Ejerens aftaleoplysninger kunne ikke hentes.",500); }
 }
 

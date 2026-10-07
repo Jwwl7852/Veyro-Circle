@@ -48,6 +48,13 @@ async function queryAgreements(fieldPath:string, op:string, value:string) {
   return rows.flatMap(row => row.document?.fields ? [Object.fromEntries(Object.entries(row.document.fields).map(([key,value])=>[key,decode(value)]))] : []);
 }
 function workflow(data:Record<string,JsonValue>) { return data as unknown as WorkflowAgreement; }
+// Pending requests must not disclose either party's private contact details,
+// including legacy requests created before this policy.
+function visibleAgreement(data:Record<string,JsonValue>) {
+  if(data.contactsReleased===true || ["accepted","handedOver","returned"].includes(agreementStage(workflow(data))))return data;
+  const cleanParty=(value:JsonValue)=>{const p=(value??{}) as Record<string,JsonValue>;return {name:p.name??"",place:p.place??{},street:"",phone:"",email:""};};
+  return {...data,borrower:cleanParty(data.borrower),lender:cleanParty(data.lender)};
+}
 function updateWrite(id:string, fields:Record<string,FirestoreValue>, updateTime:string) {
   return {update:{name:firestoreDocumentName(`agreements/${id}`),fields},updateMask:{fieldPaths:Object.keys(fields)},currentDocument:{updateTime}};
 }
@@ -65,7 +72,7 @@ export async function GET(request:Request) {
     const now = Date.now();
     const agreements = (await queryAgreements("participantUids", "ARRAY_CONTAINS", identity.localId))
       .filter(item => typeof item.retentionUntil !== "string" || Date.parse(item.retentionUntil) >= now);
-    return NextResponse.json({agreements},{headers:responseHeaders});
+    return NextResponse.json({agreements:agreements.map(visibleAgreement)},{headers:responseHeaders});
   } catch (cause) { return error(cause instanceof Error ? cause.message : "Aftalerne kunne ikke hentes.", 401); }
 }
 
@@ -85,7 +92,7 @@ export async function POST(request:Request) {
     const existing = await getFirestoreDocument(`agreements/${draft.id}`);
     if (existing) {
       const old = Object.fromEntries(Object.entries(existing.fields ?? {}).map(([key,value])=>[key,decode(value)]));
-      if (old.borrowerUid === identity.localId && (old.item as Record<string,JsonValue>)?.id === item.id && old.from === draft.from && old.to === draft.to && old.deposit === draft.deposit && old.message === draft.message.trim() && old.pickupTime===draft.pickupTime && old.returnTime===draft.returnTime) return NextResponse.json({ok:true,agreement:old},{headers:responseHeaders});
+      if (old.borrowerUid === identity.localId && (old.item as Record<string,JsonValue>)?.id === item.id && old.from === draft.from && old.to === draft.to && old.deposit === draft.deposit && old.message === draft.message.trim() && old.pickupTime===draft.pickupTime && old.returnTime===draft.returnTime) return NextResponse.json({ok:true,agreement:visibleAgreement(old)},{headers:responseHeaders});
       return error("Aftalen er allerede gemt og kan ikke overskrives.",409);
     }
     const listing = await getFirestoreDocument(`listings/${item.id}`);
@@ -104,8 +111,8 @@ export async function POST(request:Request) {
     // Only server-owned identity, price and status enter the saved agreement.
     const agreement:Record<string,JsonValue> = {
       id:draft.id, borrowerUid:identity.localId, lenderUid:ownerUid, participantUids:[identity.localId,ownerUid],
-      borrower:{name:borrower.name,email:borrower.email,phone:borrower.phone,street:borrower.street,place:borrower.place},
-      lender:{name:lender.name,phone:lender.phone,street:lender.street,place:lender.place},
+      borrower:{name:borrower.name,email:"",phone:"",street:"",place:borrower.place},
+      lender:{name:lender.name,phone:"",street:"",place:lender.place},
       item:{id:item.id,name:listingData.name,category:listingData.category,country:listingData.country,dailyPrice:price},
       from:draft.from,to:draft.to,...(hasTimes?{pickupTime:draft.pickupTime,returnTime:draft.returnTime}:{}),days,total:price*days,deposit,message:draft.message.trim(),
       handoverNote:"",returnNote:"",requestStatus:"requested",
@@ -162,7 +169,7 @@ export async function PATCH(request:Request) {
       const action = body.action as Decision;
       if (!decisionAllowed(workflow(data),identity.localId,action)) return error("Du kan ikke udføre denne handling på aftalen.",403);
       const status = action === "accept" ? "accepted" : action === "decline" ? "declined" : "cancelled";
-      const fields = {...activity(identity.localId,status,now),requestStatus:{stringValue:status}};
+      const fields:Record<string,FirestoreValue> = {...activity(identity.localId,status,now),requestStatus:{stringValue:status}};
       const writes:unknown[] = [updateWrite(body.id,fields,document.updateTime)];
       if (action === "accept") {
         if (typeof data.to !== "string" || data.to < circleToday()) return error("Perioden er udløbet. Bed om en ny forespørgsel.",409);
@@ -176,6 +183,13 @@ export async function PATCH(request:Request) {
         if ((await blockedPeriods(itemId)).some(period=>overlaps(period,workflow(data)))) return error("Tingen er blokeret af ejeren i denne periode.",409);
         const bookings = await queryAgreements("item.id","EQUAL",itemId);
         if (bookings.some(other=>other.id !== body.id && reservesDates(workflow(other)) && overlaps(workflow(data),workflow(other)))) return error("Tingen er allerede booket i en del af perioden. Vælg andre datoer.",409);
+        const [borrower,lender]=await Promise.all([getServerProfile(String(data.borrowerUid)),getServerProfile(String(data.lenderUid))]);
+        if([borrower,lender].some(p=>!p.name||!p.street||!p.phone||!p.place.id))return error("Begge profiler skal være komplette før godkendelse.",409);
+        fields.borrower=encode({name:borrower.name,email:borrower.email,phone:borrower.phone,street:borrower.street,place:borrower.place});
+        fields.lender=encode({name:lender.name,phone:lender.phone,street:lender.street,place:lender.place});
+        fields.contactsReleased={booleanValue:true};
+        writes[0]=updateWrite(body.id,fields,document.updateTime);
+        writes.push({verify:firestoreDocumentName(`listings/${itemId}`),currentDocument:{updateTime:listing.updateTime}});
         writes.push({update:{name:firestoreDocumentName(`bookingLocks/${itemId}`),fields:{updatedAt:{timestampValue:now}}},currentDocument:lock ? {updateTime:lock.updateTime} : {exists:false}});
       }
       await commitFirestoreWrites(writes);

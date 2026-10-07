@@ -27,6 +27,22 @@ Implementeret oven på den eksisterende Circle-app. Dansk og svensk brugerflade;
 
 ## Verifikation
 
-`npm test` bygger appen og kører 101 tests. Nye handler-tests bruger en Firestore REST-testdouble med atomiske versionsforudsætninger, ikke produktionsdata. De dækker kalenderprivatliv, ejerskab, samtidige blokeringer/bookinger/forlængelser, anmelderadgang, favorit-/søgningsisolering, kategorifelter, tidsvalidering, historik og efterlysningsgrænser. TypeScript og ESLint kontrolleres særskilt; eksisterende Next img-advarsler er bevaret.
+`npm test` bygger appen og kører 104 tests. Nye handler-tests bruger en Firestore REST-testdouble med atomiske versionsforudsætninger, ikke produktionsdata. De dækker kalenderprivatliv, ejerskab, samtidige blokeringer/bookinger/forlængelser, anmelderadgang, favorit-/søgningsisolering, kategorifelter, tidsvalidering, historik og efterlysningsgrænser. TypeScript og ESLint kontrolleres særskilt; eksisterende Next img-advarsler er bevaret.
 
 Fysisk test på iPhone/iPad/Android og to rigtige konti, inklusive push og udskrift med lange tillæg, skal gennemføres som ejerens accepttest. Automatiske tests bekræfter ikke fysisk levering af notifikationer eller en bestemt printers sidetal.
+
+## Kontaktoplysninger kræver godkendelse
+
+Nye forespørgsler gemmes uden privat adresse, telefon eller e-mail fra nogen af parterne. Ejeren frigiver serverhentede kontaktoplysninger atomisk sammen med godkendelsen. En generel annonceforespørgsel kan ikke hente en anden brugers kontaktoplysninger. API-læsning og idempotente genforsøg skjuler også oplysninger i ældre, endnu ikke godkendte aftaler.
+
+**Påkrævet Firebase-trin:** Publicér den opdaterede `firestore.rules`. Direkte browserlæsning af selve `agreements`-dokumentet afvises nu; appen bruger allerede server-API'en. Beskeders deltagersikrede læsning bevares. Dette er nødvendigt for at lukke direkte Firestore-adgang til kontaktoplysninger i ældre, ikke godkendte aftaler. En Netlify-deploy publicerer ikke Firestore-regler.
+
+Ejerens CLI-kommando i dette repo efter Firebase-login:
+
+```sh
+firebase deploy --only firestore:rules --project veyro-circle
+```
+
+Alternativt: Firebase Console → Veyro Circle → Firestore Database → Rules. Erstat med hele repoets `firestore.rules`, gennemse og vælg Publish. Deploy kræver projektejerens Firebase-adgang; ingen servicenøgler skal deles i chatten.
+
+Sprogknappen skifter straks og gemmer kun `preferredLanguage` via en autentificeret PATCH. Profilindlæsningen afhænger ikke længere af sproget og overskriver derfor ikke brugerens nye valg.
