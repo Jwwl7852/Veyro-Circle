@@ -70,6 +70,7 @@ const categories = [
   { id: "party", da: "Fest", sv: "Fest", icon: PartyPopper },
   { id: "kitchen", da: "Køkken", sv: "Kök", icon: Utensils },
   { id: "bike", da: "Cykler", sv: "Cyklar", icon: Bike },
+  { id: "other", da: "Andet", sv: "Övrigt", icon: PackagePlus },
 ];
 
 const categoryColors: Record<string, string> = {
@@ -701,6 +702,14 @@ export default function HomePage() {
                 </div>
                 <small>{lang === "da" ? "Søger i annoncens navn, beskrivelse og by." : "Söker i annonsens namn, beskrivning och ort."}</small>
               </div>
+            <div className="category-strip scrollbar-none" role="list" aria-label="Kategorier">
+              {categories.map((cat) => {
+                const Icon = cat.icon;
+                return <button key={cat.id} data-category={cat.id} role="listitem" className={`category-chip ${category === cat.id ? "active" : ""}`} onClick={() => setCategory(cat.id)}>
+                  <Icon size={19} /><span>{cat[lang]}</span>
+                </button>;
+              })}
+            </div>
               <div className="filter-grid">
                 <PlacePicker value={origin} onChange={setOrigin} lang={lang} label={lang === "da" ? "Søg fra postnummer eller by" : "Sök från postnummer eller ort"} />
                 <div className="place-field"><label id="radius-label">Radius</label>
@@ -733,14 +742,6 @@ export default function HomePage() {
               </div>
               <SavedSearches mode="save" lang={lang} prefs={prefs} filter={savedFilter} onChange={setPrefs} onApply={applySearch} items={listings} onLogin={user ? undefined : ()=>setAuthOpen(true)} />
             </section>
-            <div className="category-strip scrollbar-none" role="list" aria-label="Kategorier">
-              {categories.map((cat) => {
-                const Icon = cat.icon;
-                return <button key={cat.id} data-category={cat.id} role="listitem" className={`category-chip ${category === cat.id ? "active" : ""}`} onClick={() => setCategory(cat.id)}>
-                  <Icon size={19} /><span>{cat[lang]}</span>
-                </button>;
-              })}
-            </div>
             <div className="mb-4 mt-7 flex items-end justify-between">
               <div><p className="text-sm font-bold uppercase tracking-[0.14em] text-[#777b90]">{`${filtered.length} ${t.results}`}{radius !== "all" ? ` · ${radius} km` : ""}</p><h2 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">{onlyFavorites ? (lang === "da" ? "Mine favoritter" : "Mina favoriter") : t.popular}</h2></div>
             </div>
