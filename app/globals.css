@@ -34,6 +34,21 @@
 .loan-message { overflow-wrap:anywhere; white-space:pre-wrap; }
 .loan-overdue { color:#895000; background:#fff8e7; padding:10px; border-radius:6px; }
 .agreement-lifecycle-status { font-weight:700; padding:8px 0; }
+.agreement-journey { min-width:0; border:1px solid var(--border); border-radius:8px; background:white; padding:16px; }
+.journey-steps { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; padding:0 0 16px; margin:0 0 16px; list-style:none; border-bottom:1px solid var(--border); }
+.journey-steps li { display:flex; flex-direction:column; gap:7px; min-width:0; font-size:.8125rem; color:var(--muted-foreground); overflow-wrap:anywhere; }
+.journey-number { display:flex; align-items:center; justify-content:center; width:28px; height:28px; border:1px solid var(--border); border-radius:50%; font-weight:700; }
+.journey-steps .is-current { color:#006c80; font-weight:700; }
+.is-current .journey-number { color:white; background:var(--veyro-teal); border-color:var(--veyro-teal); }
+.is-done .journey-number { background:#e4f4ed; color:#116650; border-color:#b9dfcf; }
+.journey-guidance { display:grid; gap:8px; overflow-wrap:anywhere; }
+.journey-guidance h3 { font-weight:700; font-size:1rem; }
+.journey-guidance>p:not(.eyebrow) { font-size:.875rem; line-height:1.6; color:var(--muted-foreground); }
+.journey-guidance button { justify-self:start; min-height:44px; padding:8px 12px; border:1px solid var(--border); border-radius:6px; color:#006c80; font-weight:600; text-align:left; }
+.journey-guidance button:focus-visible { outline:3px solid var(--primary); outline-offset:2px; }
+.journey-guidance.needs-attention { border-left:3px solid var(--veyro-warning); padding-left:12px; }
+.agreement-condition-note { scroll-margin-top:16px; }
+@media(max-width:480px) { .journey-steps { grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; } .journey-steps li { flex-direction:row; align-items:center; } .journey-number { flex-shrink:0; } }
 .loan-filters button:focus-visible,.notification-entry:focus-visible { outline:3px solid #008EAC; outline-offset:3px; }
 @media(max-width:480px) { .loan-actions button { flex:1 1 140px; } .loans-panel .agreement-open { flex-wrap:wrap; text-align:left; } }
 

@@ -10,6 +10,7 @@ import { deleteCircleListing, loadCircleListingContact, saveCircleListing, subsc
 import { openBilling } from "@/lib/billing-client";
 import { PlacePicker, CountrySelect, ProfileForm } from "@/components/marketplace-fields";
 import { CommunityMap } from "@/components/community-map";
+import { AgreementJourney } from "@/components/agreement-journey";
 import { type Place, type Profile, type Country, type ListingPlan, distanceKm, defaultPlace, parseDailyPrice, money, dayCount, todayLocal, canCreateListing, listingLimit, FREE_LISTING_LIMIT, PLUS_LISTING_LIMIT } from "@/lib/marketplace";
 import { compressListingImage, formatImageSize, MAX_LISTING_IMAGES, type CompressedListingImage } from "@/lib/image-compression";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
@@ -705,6 +706,7 @@ export default function HomePage() {
 
       <Dialog open={!!agreementLoan} onOpenChange={open => !open && setAgreementLoan(null)}>
         {agreementLoan && <DialogContent className="agreement-dialog max-h-[94vh] overflow-y-auto rounded-xl sm:max-w-[760px]">
+          <AgreementJourney agreement={agreementLoan} uid={user?.uid ?? ""} lang={lang} names={{borrower:agreementLoan.borrower.name,lender:agreementLoan.item.owner}} onContinue={phase=>{const section=document.getElementById(`agreement-${phase}-section`);section?.scrollIntoView({block:"start",behavior:"instant"});section?.focus({preventScroll:true});}} />
           <div className="print-agreement">
             <p className="agreement-lifecycle-status">{stageLabels[lang][agreementStage(agreementLoan)]}</p>
             {agreementStage(agreementLoan) === "requested" && <p className="no-print">{lang === "da" ? "Ejeren skal først godkende forespørgslen under Mine lån. Derefter åbnes underskrifterne." : "Ägaren måste först godkänna förfrågan under Mina lån. Därefter öppnas signering."}</p>}
@@ -959,13 +961,13 @@ function AgreementConditionNote({ phase, lang, savedNote, draft, onChange, saved
     ? (da ? "Fx: Plastikken ved håndtaget er revnet ved udlevering." : "T.ex.: Plasten vid handtaget är sprucken vid utlämning.")
     : (da ? "Fx: Der er kommet en ny revne, eller en del mangler ved returnering." : "T.ex.: En ny spricka har uppstått eller en del saknas vid återlämning.");
 
-  return <section className="agreement-condition-note">
+  return <section id={`agreement-${phase}-section`} tabIndex={-1} className="agreement-condition-note">
     <div className="condition-note-heading"><div><p className="eyebrow">{handover ? (da ? "Udlevering" : "Utlämning") : (da ? "Tilbagelevering" : "Återlämning")}</p><h3>{heading}</h3></div>{locked && <span className="condition-note-locked no-print"><LockKeyhole size={14} />{da ? "Låst" : "Låst"}</span>}</div>
     <p className="condition-note-help">{help}</p>
     <div className={`condition-note-value ${normalizedSaved ? "has-note" : ""}`}><b>{da ? "Aftalt note:" : "Avtalad anteckning:"}</b><span>{normalizedSaved || emptyText}</span></div>
     {!normalizedSaved && <div className="paper-note-lines"><span /><span /></div>}
     {!locked && <div className="condition-note-editor no-print">
-      {!saved ? <p className="condition-note-notice">{da ? "Gem aftalen på kontoen, før noten kan redigeres og godkendes digitalt." : "Spara avtalet på kontot innan anteckningen kan redigeras och godkännas digitalt."}</p> : !enabled ? <p className="condition-note-notice">{da ? "Begge parter skal først underskrive udleveringen." : "Båda parter måste först signera utlämningen."}</p> : <>
+      {!saved ? <p className="condition-note-notice">{da ? "Gem aftalen på kontoen, før noten kan redigeres og godkendes digitalt." : "Spara avtalet på kontot innan anteckningen kan redigeras och godkännas digitalt."}</p> : !enabled ? <p className="condition-note-notice">{handover ? (da ? "Ejeren skal først godkende forespørgslen. Derefter kan I gemme noten, før I underskriver." : "Ägaren måste först godkänna förfrågan. Därefter kan ni spara anteckningen innan ni signerar.") : (da ? "Returnoten åbnes, når begge parter har underskrevet udleveringen. Se øverst, hvem der mangler." : "Returanteckningen öppnas när båda parter har signerat utlämningen. Se överst vem som saknas.")}</p> : <>
         <label htmlFor={`agreement-${phase}-note`}>{da ? "Fælles note" : "Gemensam anteckning"}<textarea id={`agreement-${phase}-note`} value={draft} onChange={event=>onChange(event.target.value)} maxLength={600} rows={3} placeholder={placeholder} /></label>
         <footer><span>{draft.length} / 600</span><Button type="button" variant="outline" disabled={busy || !dirty} onClick={onSave}>{busy ? <LoaderCircle className="animate-spin" size={16} /> : <Save size={16} />}{busy ? (da ? "Gemmer…" : "Sparar…") : (da ? "Gem note" : "Spara anteckning")}</Button></footer>
         {dirty && <p className="condition-note-unsaved">{da ? "Gem ændringen, før en af parterne underskriver." : "Spara ändringen innan någon av parterna signerar."}</p>}
