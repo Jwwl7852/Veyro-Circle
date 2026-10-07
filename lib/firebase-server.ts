@@ -2,7 +2,7 @@ import { serverConfig } from "@/lib/server-config";
 
 type FirebaseIdentity = { localId: string; email: string; emailVerified: boolean };
 export type FirestoreField = { stringValue?: string; booleanValue?: boolean; doubleValue?: number; timestampValue?: string; mapValue?: { fields?: Record<string, FirestoreField> } };
-let cachedToken: { value: string; expiresAt: number } | null = null;
+const cachedTokens = new Map<string, { value: string; expiresAt: number }>();
 
 function b64url(value: string | Uint8Array) {
   const bytes = typeof value === "string" ? new TextEncoder().encode(value) : value;
@@ -10,7 +10,8 @@ function b64url(value: string | Uint8Array) {
   return btoa(binary).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
 }
 
-export async function serviceToken() {
+export async function serviceToken(scope: "datastore" | "storage" = "datastore") {
+  const cachedToken = cachedTokens.get(scope);
   if (cachedToken && cachedToken.expiresAt > Date.now() + 60_000) return cachedToken.value;
   const email = serverConfig("FIREBASE_SERVICE_ACCOUNT_EMAIL");
   let rawKey = serverConfig("FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY").trim();
@@ -26,14 +27,14 @@ export async function serviceToken() {
   const key = await crypto.subtle.importKey("pkcs8", der, { name:"RSASSA-PKCS1-v1_5", hash:"SHA-256" }, false, ["sign"]);
   const now = Math.floor(Date.now() / 1000);
   const header = b64url(JSON.stringify({ alg:"RS256", typ:"JWT" }));
-  const claims = b64url(JSON.stringify({ iss:email, sub:email, aud:"https://oauth2.googleapis.com/token", iat:now, exp:now + 3600, scope:"https://www.googleapis.com/auth/datastore" }));
+  const claims = b64url(JSON.stringify({ iss:email, sub:email, aud:"https://oauth2.googleapis.com/token", iat:now, exp:now + 3600, scope:scope === "storage" ? "https://www.googleapis.com/auth/devstorage.read_write" : "https://www.googleapis.com/auth/datastore" }));
   const unsigned = `${header}.${claims}`;
   const signature = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, new TextEncoder().encode(unsigned));
   const body = new URLSearchParams({ grant_type:"urn:ietf:params:oauth:grant-type:jwt-bearer", assertion:`${unsigned}.${b64url(new Uint8Array(signature))}` });
   const response = await fetch("https://oauth2.googleapis.com/token", { method:"POST", headers:{"content-type":"application/x-www-form-urlencoded"}, body });
   if (!response.ok) throw new Error("Firebase-serveradgang kunne ikke oprettes");
   const data = await response.json() as { access_token:string; expires_in:number };
-  cachedToken = { value:data.access_token, expiresAt:Date.now() + data.expires_in * 1000 };
+  cachedTokens.set(scope, { value:data.access_token, expiresAt:Date.now() + data.expires_in * 1000 });
   return data.access_token;
 }
 

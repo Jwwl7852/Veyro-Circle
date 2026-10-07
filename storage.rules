@@ -1,6 +1,10 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
+    // Private evidence: only the verified server API may access these objects.
+    match /agreement-evidence/{allPaths=**} {
+      allow read, write: if false;
+    }
     match /users/{uid}/listings/{listingId}/{fileName} {
       allow read: if true;
       allow create, update: if request.auth != null && request.auth.uid == uid
