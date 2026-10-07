@@ -27,7 +27,7 @@ Implementeret oven på den eksisterende Circle-app. Dansk og svensk brugerflade;
 
 ## Verifikation
 
-`npm test` bygger appen og kører 104 tests. Nye handler-tests bruger en Firestore REST-testdouble med atomiske versionsforudsætninger, ikke produktionsdata. De dækker kalenderprivatliv, ejerskab, samtidige blokeringer/bookinger/forlængelser, anmelderadgang, favorit-/søgningsisolering, kategorifelter, tidsvalidering, historik og efterlysningsgrænser. TypeScript og ESLint kontrolleres særskilt; eksisterende Next img-advarsler er bevaret.
+`npm test` bygger appen og kører 107 tests. Nye handler-tests bruger en Firestore REST-testdouble med atomiske versionsforudsætninger, ikke produktionsdata. De dækker kalenderprivatliv, ejerskab, samtidige blokeringer/bookinger/forlængelser, anmelderadgang, favorit-/søgningsisolering, kategorifelter, tidsvalidering, historik og efterlysningsgrænser. TypeScript og ESLint kontrolleres særskilt; eksisterende Next img-advarsler er bevaret.
 
 Fysisk test på iPhone/iPad/Android og to rigtige konti, inklusive push og udskrift med lange tillæg, skal gennemføres som ejerens accepttest. Automatiske tests bekræfter ikke fysisk levering af notifikationer eller en bestemt printers sidetal.
 
@@ -46,3 +46,9 @@ firebase deploy --only firestore:rules --project veyro-circle
 Alternativt: Firebase Console → Veyro Circle → Firestore Database → Rules. Erstat med hele repoets `firestore.rules`, gennemse og vælg Publish. Deploy kræver projektejerens Firebase-adgang; ingen servicenøgler skal deles i chatten.
 
 Sprogknappen skifter straks og gemmer kun `preferredLanguage` via en autentificeret PATCH. Profilindlæsningen afhænger ikke længere af sproget og overskriver derfor ikke brugerens nye valg.
+
+## Abonnementsmodel (opdateret)
+
+Søgning og forespørgsler er gratis. Annoncer kræver Circle Plus fra første ting: 49 DKK/måned i Danmark eller 69 SEK/måned i Sverige, op til 20 aktive ting. Stripe bruger fortsat `STRIPE_PRICE_DKK` og `STRIPE_PRICE_SEK`; ingen pris eller abonnement ændres hos Stripe i denne kodeændring.
+
+Serveren afviser oprettelse/redigering og godkendelse af nye udlån uden ejerens Plus-adgang. Grænsen på 20 håndhæves med atomisk ejerlås, også ved samtidige oprettelser. Låneren behøver ikke abonnement. Offentligt annoncefeed henter ejerens abonnementsstatus på serveren og skjuler ikke-betalende ejeres annoncer. Ejeren kan stadig se og slette sine gemte ting under Mine ting; ingen eksisterende ting slettes. Allerede indgåede aftaler og returunderskrifter forbliver tilgængelige. Feedet opdateres ved ændringer/fokus og hvert 15. sekund, mens siden er synlig.

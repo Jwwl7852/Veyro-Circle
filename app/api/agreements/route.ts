@@ -101,6 +101,7 @@ export async function POST(request:Request) {
     if (ownerUid === identity.localId) return error("Du kan ikke låne din egen ting.");
     if ((await unavailablePeriods(item.id)).some(period=>overlaps(period,{from:draft.from as string,to:draft.to as string}))) return error("Tingen er allerede booket eller blokeret i perioden. Vælg andre datoer.",409);
     const [borrower, lender] = await Promise.all([getServerProfile(identity.localId),getServerProfile(ownerUid)]);
+    if(lender.subscriptionPlan!=="plus")return error("Ejeren skal have Circle Plus for at modtage nye forespørgsler.",409);
     if ([borrower,lender].some(p=>!p.name || !p.phone || !p.street || !p.place.id)) return error("Begge profiler skal være udfyldt før en forespørgsel.");
     const listingData = Object.fromEntries(Object.entries(listing?.fields ?? {}).map(([key,value])=>[key,decode(value)]));
     const price = listingData.dailyPrice;
@@ -184,6 +185,7 @@ export async function PATCH(request:Request) {
         const bookings = await queryAgreements("item.id","EQUAL",itemId);
         if (bookings.some(other=>other.id !== body.id && reservesDates(workflow(other)) && overlaps(workflow(data),workflow(other)))) return error("Tingen er allerede booket i en del af perioden. Vælg andre datoer.",409);
         const [borrower,lender]=await Promise.all([getServerProfile(String(data.borrowerUid)),getServerProfile(String(data.lenderUid))]);
+        if(lender.subscriptionPlan!=="plus")return error("Circle Plus kræves for at godkende nye udlån.",409);
         if([borrower,lender].some(p=>!p.name||!p.street||!p.phone||!p.place.id))return error("Begge profiler skal være komplette før godkendelse.",409);
         fields.borrower=encode({name:borrower.name,email:borrower.email,phone:borrower.phone,street:borrower.street,place:borrower.place});
         fields.lender=encode({name:lender.name,phone:lender.phone,street:lender.street,place:lender.place});

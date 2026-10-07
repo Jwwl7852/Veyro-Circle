@@ -678,3 +678,5 @@ button:focus-visible,a:focus-visible { outline:3px solid #819eb6; outline-offset
 .listing-specs dt { color:#607583; font-size:.85rem; }.listing-specs dd { font-weight:600; overflow-wrap:anywhere; }
 .agreement-addenda { margin:.5rem 0; padding:.5rem; border:1px solid var(--border); }.agreement-addenda p { margin:.3rem 0; }
 @media(max-width:639px) { .extra-panel { padding:.8rem; }.listing-specs { grid-template-columns:1fr; }.extra-panel button { max-width:100%; }.wanted-board { min-width:0; } }
+
+.discovery-toolbar button { display:flex; align-items:center; gap:.5rem; min-height:44px; padding:.65rem .85rem; color:#006f88; border:1px solid var(--border); background:white; border-radius:6px; }

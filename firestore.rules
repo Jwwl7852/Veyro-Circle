@@ -36,6 +36,7 @@ service cloud.firestore {
     match /listingCalendars/{listingId} {
       allow read, write: if false;
     }
+    match /listingLocks/{uid} { allow read, write: if false; }
     match /bookingLocks/{listingId} {
       allow read, write: if false;
     }

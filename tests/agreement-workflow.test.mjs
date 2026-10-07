@@ -178,10 +178,11 @@ function setup() {
     }
   };
   const profile={name:"Real person",email:"real@example.test",phone:"12345678",street:"Real Street 1",country:"DK",place:{id:"1",country:"DK",postcode:"4174",city:"Jystrup",lat:55,lon:12},subscriptionPlan:"plus",stripeCustomerId:"must-not-leak"};
+  const profiles=new Map();
   const server={
     verifyFirebaseRequest:async request=>{const uid=request.headers.get("authorization");if(!["owner","borrower","stranger"].includes(uid))throw new Error("Du skal være logget ind");return {localId:uid};},
     getFirestoreDocument:async path=>structuredClone(docs.get(path) ?? null),
-    getServerProfile:async()=>profile,
+    getServerProfile:async uid=>profiles.get(uid)??profile,
     firestoreDocumentName:path=>path,
     firestoreDocumentUrl:path=>`https://fake.test/${path}`,
     serviceToken:async()=>"fake",
@@ -195,7 +196,7 @@ function setup() {
         if(path.split("/").length !== 2 || path.split("/")[0] !== body.structuredQuery.from[0].collectionId) return false;
         const data=decode({mapValue:{fields:d.fields}});
         const value=f.field.fieldPath.split(".").reduce((v,key)=>v?.[key],data);
-        return f.op==="ARRAY_CONTAINS" ? value?.includes(f.value.stringValue) : value===f.value.stringValue;
+        return f.op==="ARRAY_CONTAINS" ? value?.includes(f.value.stringValue) : value===(f.value.stringValue??f.value.booleanValue);
       }).map(([,document])=>({document:structuredClone(document)}));
       return Response.json(rows);
     }
@@ -217,7 +218,7 @@ function setup() {
   dependencies["@/lib/firestore-values"]=load("../lib/firestore-values.ts");
   dependencies["@/lib/community-server"]=load("../lib/community-server.ts",dependencies);
   dependencies["@/lib/discovery"]=load("../lib/discovery.ts",{"./marketplace":market});
-  const communityApis=Object.fromEntries(["profile","reviews","preferences","wanted","agreement-changes"].map(name=>[name,load(`../app/api/${name}/route.ts`,dependencies)]));
+  const communityApis=Object.fromEntries(["listings/feed","profile","reviews","preferences","wanted","agreement-changes"].map(name=>[name,load(`../app/api/${name}/route.ts`,dependencies)]));
   const communityCall=(api,method,uid,body,query="")=>communityApis[api][method](new Request("https://circle.test/api/"+api+query,{method,headers:{...(uid?{authorization:uid}:{}),"content-type":"application/json"},...(body?{body:JSON.stringify(body)}:{})}));
   const calendarApi=load("../app/api/availability/route.ts",dependencies);
   const api=load("../app/api/agreements/route.ts",dependencies);
@@ -237,7 +238,7 @@ function setup() {
   const calendarCall=(uid,body)=>calendarApi.POST(new Request("https://circle.test/api/availability",{method:"POST",headers:{authorization:uid,"content-type":"application/json"},body:JSON.stringify(body)}));
   const publicCalendar=(ids)=>calendarApi.GET(new Request("https://circle.test/api/availability?ids="+ids));
   const contactCall=uid=>listingApi.GET(new Request("https://circle.test/api/listings?id="+base.item.id,{headers:{authorization:uid}}));
-  return {contactCall,communityCall,docs,put,value,call,photoCall,images,listingCall,pushes,calendarCall,publicCalendar};
+  return {profiles,profile,contactCall,communityCall,docs,put,value,call,photoCall,images,listingCall,pushes,calendarCall,publicCalendar};
 }
 test("only listing owner sets deposit; old clients preserve it and invalid amounts fail",async()=>{
   const s=setup();
@@ -534,4 +535,31 @@ test("language changes update only the authenticated user's preference",async()=
   assert.equal(s.value("users/borrower").preferredLanguage,"da");
   const source=readFileSync(new URL("../app/page.tsx",import.meta.url),"utf8");
   assert.doesNotMatch(source,/\[configured, lang, user\?\.email, user\?\.emailVerified, user\?\.uid\]/);
+});
+
+test("no free advertisements: server rejects creation and editing but borrowers can request free",async()=>{
+  const s=setup();s.profiles.set("borrower",{...s.profile,subscriptionPlan:"free"});
+  const draft={...base.item,id:"new_listing_1234567890",description:"Trailer",place:s.profile.place,photos:[]};
+  assert.equal((await s.listingCall("borrower",draft)).status,403);
+  assert.equal((await s.call("POST","borrower",{agreement:base})).status,200);
+  s.profiles.set("owner",{...s.profile,subscriptionPlan:"free"});
+  assert.equal((await s.listingCall("owner",{...draft,id:base.item.id})).status,403);
+  assert.equal((await s.call("PATCH","owner",{id:base.id,action:"accept"})).status,409);
+  assert.equal((await s.call("POST","borrower",{agreement:{...base,id:"VC-2099-NEW123456789"}})).status,409);
+});
+test("paid listing limit cannot be exceeded by concurrent submissions",async()=>{
+  const s=setup();for(let i=0;i<18;i++)s.put("listings/existing_listing_"+i,{...base.item,ownerUid:"owner",active:true});
+  const draft={...base.item,description:"Trailer",place:s.profile.place,photos:[]};
+  const results=await Promise.all([1,2].map(i=>s.listingCall("owner",{...draft,id:"new_listing_123456789"+i})));
+  assert.deepEqual(results.map(r=>r.status).sort(),[200,409]);
+  assert.equal([...s.docs.keys()].filter(p=>p.startsWith("listings/")).length,20);
+  assert.equal((await s.listingCall("owner",{...draft,id:"new_listing_1234567893"})).status,409);
+});
+test("public feed pauses unpaid listings without deleting owners' items or exposing contacts",async()=>{
+  const s=setup();s.put("users/owner",{subscriptionPlan:"free",street:"Private",phone:"123"});
+  const read=async uid=>(await (await s.communityCall("listings/feed","GET",uid)).json()).listings;
+  assert.equal((await read(null)).length,0);const own=await read("owner");assert.equal(own.length,1);assert.equal(own[0].publishable,false);
+  s.put("users/owner",{subscriptionPlan:"plus",street:"Private",phone:"123"});
+  const publicItems=await read(null);assert.equal(publicItems.length,1);assert.equal(publicItems[0].publishable,true);assert.equal(publicItems[0].street,undefined);assert.equal(publicItems[0].phone,undefined);
+  s.put("users/owner",{subscriptionPlan:"free"});assert.equal((await read("borrower")).length,0);assert.equal(s.docs.has("listings/"+base.item.id),true);
 });

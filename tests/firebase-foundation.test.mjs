@@ -23,7 +23,8 @@ test("listing API enforces owner, subscription limit, deletion and image cleanup
   const client = await readFile(new URL("../lib/firebase-listings.ts", import.meta.url), "utf8");
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(api, /verifyFirebaseRequest/);
-  assert.match(api, /subscriptionPlan === "plus" \? 20 : 1/);
+  assert.match(api, /subscriptionPlan!=="plus"/);
+  assert.match(api, /const limit = 20/);
   assert.match(api, /existing\.fields\?\.ownerUid/);
   assert.match(api, /export async function DELETE/);
   assert.match(client, /deleteListingImage/);

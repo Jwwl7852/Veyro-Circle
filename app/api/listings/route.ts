@@ -3,7 +3,7 @@ import { notifyListingMatches } from "@/lib/search-alerts";
 import type { Place } from "@/lib/marketplace";
 import { cleanDetails } from "@/lib/listing-details";
 import { NextResponse } from "next/server";
-import { firestoreDocumentUrl, getFirestoreDocument, getServerProfile, serviceToken, verifyFirebaseRequest } from "@/lib/firebase-server";
+import { commitFirestoreWrites, firestoreDocumentName, firestoreDocumentUrl, getFirestoreDocument, getServerProfile, serviceToken, verifyFirebaseRequest } from "@/lib/firebase-server";
 import { serverConfig } from "@/lib/server-config";
 
 type JsonValue = null | boolean | number | string | JsonValue[] | { [key:string]:JsonValue };
@@ -47,6 +47,7 @@ export async function POST(request:Request) {
   try {
     const identity = await verifyFirebaseRequest(request);
     const profile = await getServerProfile(identity.localId);
+    if(profile.subscriptionPlan!=="plus")return error("Circle Plus kræves for at oprette og udgive annoncer. 49 DKK eller 69 SEK pr. måned for op til 20 aktive ting.",403);
     const body = await request.json() as {listing?:ListingPayload};
     const listing = body.listing;
     const id = listing?.id ?? "";
@@ -67,11 +68,12 @@ export async function POST(request:Request) {
     // Older clients must not erase an owner's deposit by omitting the field.
     const deposit = listing?.deposit ?? (existing?.fields?.deposit ? decode(existing.fields.deposit) : 0);
     if (typeof deposit !== "number" || !Number.isSafeInteger(deposit) || deposit < 0 || deposit > 10_000_000) return error("Depositum skal være mellem 0 og 100.000 kr. med højst to decimaler.");
+    const listingLock=!existing?await getFirestoreDocument(`listingLocks/${identity.localId}`):null;
     if (!existing) {
       const current = await ownerListings(identity.localId);
       const activeCount = current.filter(item => item.data.active !== false).length;
-      const limit = profile.subscriptionPlan === "plus" ? 20 : 1;
-      if (activeCount >= limit) return error(profile.subscriptionPlan === "plus" ? "Du kan højst have 20 aktive annoncer." : "Gratis medlemskab giver plads til én aktiv annonce. Opgradér til Circle Plus for flere.",409);
+      const limit = 20;
+      if (activeCount >= limit) return error("Du kan højst have 20 aktive annoncer.",409);
     }
     const now = new Date().toISOString();
     const data:Record<string,JsonValue> = {
@@ -82,13 +84,14 @@ export async function POST(request:Request) {
     const fields = Object.fromEntries(Object.entries(data).map(([key,value])=>[key,encode(value)]));
     fields.updatedAt = {timestampValue:now};
     fields.createdAt = existing?.fields?.createdAt ?? {timestampValue:now};
-    const response = await fetch(firestoreDocumentUrl(`listings/${id}`), {method:"PATCH",headers:{authorization:`Bearer ${await serviceToken()}`,"content-type":"application/json"},body:JSON.stringify({fields})});
-    if (!response.ok) throw new Error("Annoncen kunne ikke gemmes i Firebase.");
+    const writes:unknown[]=[{update:{name:firestoreDocumentName(`listings/${id}`),fields},currentDocument:existing?{updateTime:existing.updateTime}:{exists:false}}];
+    if(!existing)writes.push({update:{name:firestoreDocumentName(`listingLocks/${identity.localId}`),fields:{updatedAt:{timestampValue:now}}},currentDocument:listingLock?{updateTime:listingLock.updateTime}:{exists:false}});
+    await commitFirestoreWrites(writes);
     if(!existing) after(()=>notifyListingMatches(id,identity.localId,{name,description,country,category:listing!.category!,dailyPrice:listing!.dailyPrice!,place:place as unknown as Place,city:String(place.city)}));
     return NextResponse.json({ok:true,id});
   } catch (cause) {
     const message = cause instanceof Error ? cause.message : "Annoncen kunne ikke gemmes.";
-    return error(message, message.includes("logget") || message.includes("session") ? 401 : 500);
+    return error(message, message === "IDENTITY_CONFLICT" ? 409 : message.includes("logget") || message.includes("session") ? 401 : 500);
   }
 }
 

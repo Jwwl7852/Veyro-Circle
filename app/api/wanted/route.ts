@@ -27,6 +27,7 @@ export async function POST(request:Request) {
       if(b.action==="close") {if(data.ownerUid!==uid)return Response.json({error:"NOT_OWNER"},{status:403});data.status="closed";}
       else if(b.action==="offer") {
         if(data.ownerUid===uid||data.status!=="open"||Date.parse(String(data.expiresAt))<=Date.now()||!validListingId(b.listingId))throw Error("INVALID");
+        if((await getServerProfile(uid)).subscriptionPlan!=="plus")throw Error("SUBSCRIPTION_REQUIRED");
         const listing=await getFirestoreDocument(`listings/${b.listingId}`);if(listing?.fields?.ownerUid?.stringValue!==uid||listing.fields?.active?.booleanValue!==true)return Response.json({error:"NOT_OWNER"},{status:403});
         const offers=Array.isArray(data.offers)?data.offers as Array<Record<string,Json>>:[];
         if(!offers.some(o=>o.listingId===b.listingId)){if(offers.length>=20)throw Error("LIMIT");offers.push({listingId:b.listingId,createdAt:now});}data.offers=offers;

@@ -27,7 +27,7 @@ import { agreementSigning, displayedAgreementNote, type NoteEdit } from "@/lib/a
 import { parseDeposit } from "@/lib/marketplace";
 import { AgreementPhotos as AgreementPhotoPanel } from "@/components/agreement-photos";
 import { phasePhotos, photoVersion, type AgreementPhotos, type AgreementPhoto } from "@/lib/agreement-photos";
-import { type Place, type Profile, type Country, type ListingPlan, distanceKm, places,parseDailyPrice, money, dayCount, todayLocal, canCreateListing, listingLimit, FREE_LISTING_LIMIT, PLUS_LISTING_LIMIT } from "@/lib/marketplace";
+import { type Place, type Profile, type Country, type ListingPlan, distanceKm, places,parseDailyPrice, money, dayCount, todayLocal, canCreateListing, listingLimit, PLUS_LISTING_LIMIT } from "@/lib/marketplace";
 import { compressListingImage, formatImageSize, MAX_LISTING_IMAGES, type CompressedListingImage } from "@/lib/image-compression";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -57,7 +57,7 @@ type Listing = {
   id: string; name: string; owner: string; city: string; country: "DK" | "SE";
   ownerStreet: string; ownerPhone: string; ownerUid?: string;
   distance: number; category: string; icon: typeof Drill; color: string;
-  description: string; details?:Record<string,string>;createdAt?:string; rating: number; availability: string;
+  publishable?:boolean;description: string; details?:Record<string,string>;createdAt?:string; rating: number; availability: string;
   place: Place; dailyPrice: number; deposit?:number; photos?: CompressedListingImage[]; owned?: boolean;
 };
 
@@ -336,7 +336,7 @@ export default function HomePage() {
     if (!origin && radius !== "all") return [];
     const q = query.trim().toLowerCase();
     return listings.map(item => ({ ...item, distance: origin ? distanceKm(origin, item.place) : NaN })).filter(item =>
-      (country === "ALL" || item.country === country) &&
+      item.publishable!==false && (country === "ALL" || item.country === country) &&
       (category === "all" || item.category === category) &&
       (radius === "all" || item.distance <= Number(radius)) &&
       (priceFilter === "all" || (priceFilter === "free" ? item.dailyPrice === 0 : item.dailyPrice > 0)) &&
@@ -395,6 +395,7 @@ export default function HomePage() {
 
   function openEdit(item: Listing) {
     if (!item.owned) return;
+    if(listingPlan!=="plus"){setSelected(null);setShowUpgrade(true);return;}
     setSelected(null); setEditingId(item.id); setNewName(item.name); setNewDescription(item.description);
     setNewCategory(item.category);setNewDetails(item.details??{}); setNewCountry(item.country); setNewPlace(item.place);
     setPricing(item.dailyPrice > 0 ? "paid" : "free");
@@ -759,7 +760,7 @@ export default function HomePage() {
             <div className="sharing-info">
               <h2>{lang === "da" ? "Enkel og ærlig pris" : "Enkelt och tydligt pris"}</h2>
               <p><b>{lang === "da" ? "Gratis at søge og låne" : "Gratis att söka och låna"}</b>{lang === "da" ? "Det koster ikke noget at finde ting eller sende en forespørgsel." : "Det kostar inget att hitta saker eller skicka en förfrågan."}</p>
-              <p><b>{lang === "da" ? "1 annonce gratis" : "1 annons gratis"}</b>{lang === "da" ? "Alle kan have 1 aktiv annonce uden betaling." : "Alla kan ha 1 aktiv annons utan betalning."}</p>
+              <p><b>{lang === "da" ? "Annoncer kræver Circle Plus" : "Annonser kräver Circle Plus"}</b>{lang === "da" ? "Op til 20 aktive ting for 49 DKK eller 69 SEK om måneden." : "Upp till 20 aktiva saker för 49 DKK eller 69 SEK per månad."}</p>
               <p><b>Veyro Circle Plus</b>{lang === "da" ? "49 DKK om måneden for op til 20 aktive annoncer. Sikker betaling via Stripe." : "69 SEK per månad för upp till 20 aktiva annonser. Säker betalning via Stripe."}</p>
               <p className="muted">{lang === "da" ? "Veyro Circle tager ingen provision af den private lejeaftale." : "Veyro Circle tar ingen provision på den privata hyresaffären."}</p>
             </div>
@@ -924,7 +925,7 @@ export default function HomePage() {
 
       <Dialog open={showUpgrade} onOpenChange={setShowUpgrade}>
         <DialogContent className="form-dialog max-h-[calc(100dvh-1rem)] overflow-y-auto rounded-xl sm:max-w-[520px]">
-          <DialogHeader><DialogTitle className="flex items-center gap-3 text-2xl font-bold"><span className="plus-icon"><Crown size={23} /></span>Veyro Circle Plus</DialogTitle><DialogDescription>{lang === "da" ? "Du har brugt din gratisannonce. Med Plus kan du have op til 20 aktive ting ad gangen." : "Du har använt din gratisannons. Med Plus kan du ha upp till 20 aktiva saker samtidigt."}</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle className="flex items-center gap-3 text-2xl font-bold"><span className="plus-icon"><Crown size={23} /></span>Veyro Circle Plus</DialogTitle><DialogDescription>{lang === "da" ? "Det er gratis at søge og sende forespørgsler. For at annoncere skal du have Plus, som giver op til 20 aktive ting." : "Det är gratis att söka och skicka förfrågningar. För att annonsera behöver du Plus, som ger upp till 20 aktiva saker."}</DialogDescription></DialogHeader>
           <div className="upgrade-price"><strong>{profile?.place.country === "SE" ? "69 SEK" : "49 DKK"}</strong><span>{lang === "da" ? "om måneden" : "per månad"}</span></div>
           <ul className="upgrade-benefits">
             <li><Check size={18} />{lang === "da" ? "Op til 20 aktive ting" : "Upp till 20 aktiva saker"}</li>
@@ -1181,14 +1182,14 @@ function ProfileView({ lang, profile, authenticatedEmail, onSave, onLogout, onSu
 
 function SubscriptionView({ lang, plan, used, onBack, onUpgrade, onManage }: { lang: Lang; plan: ListingPlan; used: number; onBack: () => void; onUpgrade: () => void; onManage: () => void }) {
   const limit = listingLimit(plan);
-  return <div className="content-panel subscription-page"><button type="button" className="text-link" onClick={onBack}>← {lang === "da" ? "Tilbage til konto" : "Tillbaka till konto"}</button><div><p className="eyebrow">Veyro Circle</p><h1 className="page-title">{lang === "da" ? "Mit abonnement" : "Min prenumeration"}</h1></div><section className={`membership-card ${plan === "plus" ? "is-plus" : ""}`}><div className="membership-top"><div className="membership-icon">{plan === "plus" ? <Crown size={22} /> : <PackagePlus size={22} />}</div><div><p className="eyebrow">{lang === "da" ? "Dit abonnement" : "Din prenumeration"}</p><h2>{plan === "plus" ? "Veyro Circle Plus" : (lang === "da" ? "Gratis medlemskab" : "Gratis medlemskap")}</h2></div><span className="plan-badge">{plan === "plus" ? "Aktiv" : "0 kr."}</span></div><div className="membership-usage"><div><span>{lang === "da" ? "Aktive ting" : "Aktiva saker"}</span><b>{used} {lang === "da" ? "af" : "av"} {limit}</b></div><Progress value={Math.min(100, used / limit * 100)} /></div><p>{plan === "plus" ? (lang === "da" ? "Du kan have op til 20 aktive ting. Redigering og sletning tæller ikke som nye opslag." : "Du kan ha upp till 20 aktiva saker. Redigering och borttagning räknas inte som nya annonser.") : (lang === "da" ? `Du har ${Math.max(0, FREE_LISTING_LIMIT - used)} gratis opslag tilbage. Plus giver plads til ${PLUS_LISTING_LIMIT} aktive ting.` : `Du har ${Math.max(0, FREE_LISTING_LIMIT - used)} gratisannonser kvar. Plus ger plats för ${PLUS_LISTING_LIMIT} aktiva saker.`)}</p>{plan === "free" ? <Button type="button" onClick={onUpgrade} className="membership-cta"><Crown size={17} />Se Veyro Circle Plus</Button> : <Button type="button" onClick={onManage} variant="outline" className="membership-cta manage-subscription">{lang === "da" ? "Administrer abonnement" : "Hantera prenumeration"}</Button>}</section></div>;
+  return <div className="content-panel subscription-page"><button type="button" className="text-link" onClick={onBack}>← {lang === "da" ? "Tilbage til konto" : "Tillbaka till konto"}</button><div><p className="eyebrow">Veyro Circle</p><h1 className="page-title">{lang === "da" ? "Mit abonnement" : "Min prenumeration"}</h1></div><section className={`membership-card ${plan === "plus" ? "is-plus" : ""}`}><div className="membership-top"><div className="membership-icon">{plan === "plus" ? <Crown size={22} /> : <PackagePlus size={22} />}</div><div><p className="eyebrow">{lang === "da" ? "Dit abonnement" : "Din prenumeration"}</p><h2>{plan === "plus" ? "Veyro Circle Plus" : (lang === "da" ? "Gratis søgning og forespørgsler" : "Gratis sökning och förfrågningar")}</h2></div><span className="plan-badge">{plan === "plus" ? "Aktiv" : "0 kr."}</span></div><div className="membership-usage"><div><span>{lang === "da" ? "Aktive ting" : "Aktiva saker"}</span><b>{used} {lang === "da" ? "af" : "av"} {limit}</b></div><Progress value={limit ? Math.min(100, used / limit * 100) : 0} /></div><p>{plan === "plus" ? (lang === "da" ? "Du kan have op til 20 aktive ting. Redigering og sletning tæller ikke som nye opslag." : "Du kan ha upp till 20 aktiva saker. Redigering och borttagning räknas inte som nya annonser.") : (lang === "da" ? `Du kan søge og forespørge gratis. Annoncer kræver Circle Plus: 49 DKK eller 69 SEK om måneden for op til ${PLUS_LISTING_LIMIT} aktive ting.` : `Du kan söka och skicka förfrågningar gratis. Annonser kräver Circle Plus: 49 DKK eller 69 SEK per månad för upp till ${PLUS_LISTING_LIMIT} aktiva saker.`)}</p>{plan === "free" ? <Button type="button" onClick={onUpgrade} className="membership-cta"><Crown size={17} />Se Veyro Circle Plus</Button> : <Button type="button" onClick={onManage} variant="outline" className="membership-cta manage-subscription">{lang === "da" ? "Administrer abonnement" : "Hantera prenumeration"}</Button>}</section></div>;
 }
 
 function ItemsView({ lang, profile, listings, plan, onAdd, onEdit, onDelete,onCalendar }: { lang: Lang; profile: Profile | null; listings: Listing[]; plan: ListingPlan; onAdd: () => void; onEdit: (item: Listing) => void; onDelete: (item: Listing) => void; onCalendar:(item:Listing)=>void }) {
   const used = listings.length;
   return <div className="content-panel"><section className="my-items my-items-page">
       <div className="my-items-head"><div><p className="eyebrow">{lang === "da" ? "Dine annoncer" : "Dina annonser"}</p><h2>{lang === "da" ? "Mine ting" : "Mina saker"}</h2></div><Button type="button" onClick={onAdd} disabled={!profile || (plan === "plus" && used >= PLUS_LISTING_LIMIT)}><PackagePlus size={17} />{lang === "da" ? "Tilføj" : "Lägg till"}</Button></div>
-      {!profile ? <p className="my-items-empty">{lang === "da" ? "Opret din konto for at dele eller udleje en ting." : "Skapa ditt konto för att dela eller hyra ut en sak."}</p> : listings.length === 0 ? <div className="my-items-empty"><ImagePlus size={28} /><p>{lang === "da" ? "Du har endnu ingen ting. Din første aktive annonce er gratis." : "Du har inga saker ännu. Din första aktiva annons är gratis."}</p><button type="button" onClick={onAdd}>{lang === "da" ? "Opret din første annonce" : "Skapa din första annons"}</button></div> : <div className="my-items-list">
+      {!profile ? <p className="my-items-empty">{lang === "da" ? "Opret din konto for at dele eller udleje en ting." : "Skapa ditt konto för att dela eller hyra ut en sak."}</p> : listings.length === 0 ? <div className="my-items-empty"><ImagePlus size={28} /><p>{lang === "da" ? "Du har endnu ingen ting. Circle Plus giver plads til op til 20 aktive annoncer." : "Du har inga saker ännu. Circle Plus ger plats för upp till 20 aktiva annonser."}</p><button type="button" onClick={onAdd}>{lang === "da" ? "Opret din første annonce" : "Skapa din första annons"}</button></div> : <div className="my-items-list">{plan!=="plus" && <p className="agreements-load-note">{lang==="da"?"Dine ting er gemt, men vises ikke i søgningen uden Circle Plus. Du kan stadig slette dem.":"Dina saker finns kvar men visas inte i sökningen utan Circle Plus. Du kan fortfarande ta bort dem."}</p>}
         {listings.map(item => { const Icon = item.icon; return <article key={item.id} className="my-item-row"><div className={`my-item-thumb bg-gradient-to-br ${item.color}`}>{item.photos?.[0] ? <img src={item.photos[0].src} alt="" /> : <Icon size={27} />}</div><div className="min-w-0 flex-1"><h3>{item.name}</h3><p>{item.city} · {priceLabel(item, lang)}</p><small>{item.photos?.length || 0}/2 {lang === "da" ? "billeder" : "bilder"}</small></div><div className="my-item-actions"><button type="button" onClick={()=>onCalendar(item)}><CalendarDays size={16}/>{lang === "da" ? "Kalender" : "Kalender"}</button><button type="button" onClick={() => onEdit(item)}><Pencil size={16} />{lang === "da" ? "Rediger" : "Redigera"}</button><button type="button" className="delete" onClick={() => onDelete(item)}><Trash2 size={16} />{lang === "da" ? "Slet" : "Ta bort"}</button></div></article>; })}
       </div>}
     </section></div>;
