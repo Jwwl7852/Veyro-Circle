@@ -9,7 +9,7 @@
 .notification-entry { display:grid; gap:6px; padding:14px; text-align:left; border:1px solid #D6E1E6; border-radius:8px; min-height:44px; overflow-wrap:anywhere; }
 .notification-entry.unread { border-left:4px solid #008EAC; background:#F2F6F8; }
 .notification-entry small { color:#607583; }
-.loans-heading { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:20px; }
+.loans-heading { display:flex; justify-content:flex-end; align-items:center; gap:12px; margin-bottom:12px; }
 .loan-filters { display:flex; flex-wrap:wrap; gap:8px; margin:14px 0; }
 .loan-filters button { min-height:44px; padding:8px 14px; border:1px solid #D6E1E6; border-radius:7px; background:white; }
 .loan-filters button[aria-pressed="true"] { background:#008EAC; border-color:#008EAC; color:white; }

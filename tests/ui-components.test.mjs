@@ -155,3 +155,20 @@ test("new loan and notification controls have mobile sizing and focus styling",a
   assert.match(css,/\.notification-entry[^}]*overflow-wrap:anywhere/);
   assert.match(css,/\.loan-filters button:focus-visible/);
 });
+
+test("map and loans omit visible page titles but retain accessible headings",async()=>{
+  const page=await readFile(path.join(root,"app/page.tsx"),"utf8");
+  const map=page.slice(page.indexOf('{tab === "map" &&'),page.indexOf('{tab === "map" &&')+1000);
+  assert.match(map,/<h1 className="sr-only">\{lang === "da" \? "Kort" : "Karta"\}<\/h1>/);
+  assert.doesNotMatch(map,/<header>|className="page-title"|className="eyebrow"/);
+  const {RequestsView}=await vite.ssrLoadModule("/app/page.tsx");
+  for (const [lang,title,refresh] of [["da","Mine lån","Opdatér"],["sv","Mina lån","Uppdatera"]]) {
+    const html=renderToStaticMarkup(React.createElement(RequestsView,{
+      t:{requests:title},loans:[],lang,userUid:"viewer",loading:false,loadError:false,
+      direction:"borrower",archive:false,setDirection(){},setArchive(){},onChat(){},onAgreement(){},onDecision(){},
+    }));
+    assert.ok(html.includes(`<h1 class="sr-only">${title}</h1>`));
+    assert.doesNotMatch(html,/Veyro Circle|class="page-title"|class="eyebrow"/);
+    assert.ok(html.includes(refresh));
+  }
+});
