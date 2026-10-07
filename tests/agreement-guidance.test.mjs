@@ -10,6 +10,33 @@ const policy=load("../lib/agreement-workflow.ts");
 const {agreementGuidance:guide}=load("../lib/agreement-guidance.ts",{"./agreement-workflow":policy});
 const a={id:"ticket",borrowerUid:"borrower",lenderUid:"lender",from:"2026-10-08",to:"2026-10-09",requestStatus:"requested"};
 const names={borrower:"Jørn",lender:"Mikkel"};
+const {displayedAgreementNote:note,agreementSigning:signing}=load("../lib/agreement-signing.ts",{"./agreement-workflow":policy});
+test("untouched open notes follow the other party's saved note; locked notes discard stale drafts",()=>{
+  const initial={...a,saved:true,requestStatus:"accepted",handoverNote:""};
+  assert.equal(note(initial,"handover",null),"");
+  const updated={...initial,handoverNote:"Revnet plast"};
+  assert.equal(note(updated,"handover",null),"Revnet plast");
+  const edit={id:a.id,value:"Min kladde"};
+  assert.equal(note(updated,"handover",edit),"Min kladde");
+  const locked={...updated,borrowerSignature:{}};
+  assert.equal(note(locked,"handover",edit),"Revnet plast");
+  assert.equal(signing(locked,"lender","lender","handover",note(locked,"handover",edit),true,"da").canSign,true);
+  const returning={...locked,lenderSignature:{},returnNote:"Ny ridse",lenderReturnSignature:{}};
+  assert.equal(note(returning,"return",edit),"Ny ridse");
+  assert.equal(signing(returning,"borrower","borrower","return",note(returning,"return",edit),true,"sv").canSign,true);
+});
+test("both signing orders work from own accounts and blockers explain the next action",()=>{
+  const loan={...a,saved:true,requestStatus:"accepted",handoverNote:"Note"};
+  for(const [role,uid,firstField] of [["borrower","borrower","lenderSignature"],["lender","lender","borrowerSignature"]]) {
+    assert.equal(signing({...loan,[firstField]:{}},uid,role,"handover","Note",true,"da").canSign,true);
+    assert.equal(signing(loan,"stranger",role,"handover","Note",true,"da").canSign,false);
+  }
+  assert.match(signing(loan,"borrower","borrower","handover","Kladde",true,"da").reason,/Gem din ændring/);
+  assert.match(signing(loan,"borrower","borrower","handover","Note",false,"sv").reason,/granskat/);
+  assert.match(signing(loan,"borrower","lender","handover","Note",true,"da").reason,/egen konto/);
+  assert.equal(signing(loan,"borrower","borrower","return","",true,"da").canSign,false);
+  assert.equal(signing({...loan,lenderUid:"borrower"},"borrower","lender","handover","Note",true,"da").canSign,false);
+});
 test("guidance distinguishes owner approval from borrower waiting",()=>{
   assert.match(guide(a,"lender","da",names).title,/Du skal svare/);
   assert.match(guide(a,"borrower","da",names).title,/Afventer svar fra Mikkel/);

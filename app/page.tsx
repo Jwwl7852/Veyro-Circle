@@ -11,6 +11,8 @@ import { openBilling } from "@/lib/billing-client";
 import { PlacePicker, CountrySelect, ProfileForm } from "@/components/marketplace-fields";
 import { CommunityMap } from "@/components/community-map";
 import { AgreementJourney } from "@/components/agreement-journey";
+import { agreementSigning, displayedAgreementNote, type NoteEdit } from "@/lib/agreement-signing";
+import { parseDeposit } from "@/lib/marketplace";
 import { AgreementPhotos as AgreementPhotoPanel } from "@/components/agreement-photos";
 import { phasePhotos, photoVersion, type AgreementPhotos, type AgreementPhoto } from "@/lib/agreement-photos";
 import { type Place, type Profile, type Country, type ListingPlan, distanceKm, defaultPlace, parseDailyPrice, money, dayCount, todayLocal, canCreateListing, listingLimit, FREE_LISTING_LIMIT, PLUS_LISTING_LIMIT } from "@/lib/marketplace";
@@ -44,7 +46,7 @@ type Listing = {
   ownerStreet: string; ownerPhone: string; ownerUid?: string;
   distance: number; category: string; icon: typeof Drill; color: string;
   description: string; rating: number; availability: string;
-  place: Place; dailyPrice: number; photos?: CompressedListingImage[]; owned?: boolean;
+  place: Place; dailyPrice: number; deposit?:number; photos?: CompressedListingImage[]; owned?: boolean;
 };
 
 const categories = [
@@ -146,7 +148,7 @@ export default function HomePage() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [requestMessage, setRequestMessage] = useState("");
-  const [depositInput, setDepositInput] = useState("");
+  const [newDepositInput, setNewDepositInput] = useState("");
   const [loans, setLoans] = useState<Loan[]>([]);
   const [agreementLoan, setAgreementLoan] = useState<Loan | null>(null);
   const [chatLoan, setChatLoan] = useState<Loan | null>(null);
@@ -156,8 +158,12 @@ export default function HomePage() {
   const [noteBusy, setNoteBusy] = useState<SignaturePhase | null>(null);
   const [photoBusy, setPhotoBusy] = useState(false);
   const [photoReviews, setPhotoReviews] = useState<Record<string,string>>({});
-  const [handoverNoteDraft, setHandoverNoteDraft] = useState("");
-  const [returnNoteDraft, setReturnNoteDraft] = useState("");
+  const [handoverEdit,setHandoverEdit] = useState<NoteEdit>(null);
+  const [returnEdit,setReturnEdit] = useState<NoteEdit>(null);
+  const handoverNoteDraft=displayedAgreementNote(agreementLoan,"handover",handoverEdit);
+  const returnNoteDraft=displayedAgreementNote(agreementLoan,"return",returnEdit);
+  function setHandoverNoteDraft(value:string) {setHandoverEdit(agreementLoan && value !== (agreementLoan.handoverNote ?? "") ? {id:agreementLoan.id,value} : null);}
+  function setReturnNoteDraft(value:string) {setReturnEdit(agreementLoan && value !== (agreementLoan.returnNote ?? "") ? {id:agreementLoan.id,value} : null);}
   const [formError, setFormError] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [newPhotos, setNewPhotos] = useState<CompressedListingImage[]>([]);
@@ -285,7 +291,7 @@ export default function HomePage() {
 
   function resetItemForm() {
     setEditingId(null); setNewName(""); setNewDescription(""); setNewCategory("tools");
-    setPricing("free"); setPriceInput(""); setNewPhotos([]); setFormError("");
+    setPricing("free"); setPriceInput(""); setNewDepositInput(""); setNewPhotos([]); setFormError("");
   }
 
   function openAdd() {
@@ -305,6 +311,7 @@ export default function HomePage() {
     setNewCategory(item.category); setNewCountry(item.country); setNewPlace(item.place);
     setPricing(item.dailyPrice > 0 ? "paid" : "free");
     setPriceInput(item.dailyPrice > 0 ? String(item.dailyPrice / 100).replace(".", lang === "da" ? "," : ".") : "");
+    setNewDepositInput(item.deposit ? String(item.deposit/100).replace(".",",") : "");
     setNewPhotos(item.photos || []); setFormError(""); setShowAdd(true);
   }
 
@@ -349,6 +356,8 @@ export default function HomePage() {
 
   async function publishItem() {
     const amount = pricing === "free" ? 0 : parseDailyPrice(priceInput);
+    const deposit=parseDeposit(newDepositInput);
+    if (deposit === null) {setFormError(lang === "da" ? "Depositum skal være mellem 0 og 100.000 kr. med højst to decimaler." : "Depositionen måste vara mellan 0 och 100 000 kr med högst två decimaler.");return;}
     if (!profile || !newName.trim() || !newPlace || newPlace.country !== newCountry || amount === null) {
       setFormError(lang === "da" ? "Udfyld navn, vælg by, og indtast en positiv dagspris med højst 2 decimaler, hvis du vælger betaling." : "Fyll i namn, välj ort och ange ett positivt dagspris med högst 2 decimaler om du väljer betalning.");
       return;
@@ -364,7 +373,7 @@ export default function HomePage() {
     const id = editingId ?? crypto.randomUUID();
     const update = {
       id, city: newPlace.city,
-      country: newCountry, place: newPlace, dailyPrice: amount, category: newCategory,
+      country: newCountry, place: newPlace, dailyPrice: amount, deposit, category: newCategory,
       description: newDescription || (lang === "da" ? "Til udlån efter aftale." : "För utlåning enligt överenskommelse."),
       photos: newPhotos, name:newName.trim(),
     };
@@ -399,15 +408,14 @@ export default function HomePage() {
     const today = todayLocal();
     requestTicket.current = null;
     setBookedPeriods([]);setAvailabilityError(false);
-    setFrom(today); setTo(today); setFormError(""); setRequestMessage(""); setDepositInput(""); setShowRequest(true);
+    setFrom(today); setTo(today); setFormError(""); setRequestMessage(""); setShowRequest(true);
   }
 
   async function sendRequest() {
     if (!selected || !profile || !dateValid || days === null || bookingConflict) {
       setFormError(lang === "da" ? "Vælg gyldige datoer. Slutdato må ikke ligge før startdato, og startdato må ikke være i fortiden." : "Välj giltiga datum. Slutdatum får inte vara före startdatum och startdatum får inte vara i det förflutna."); return;
     }
-    const deposit = depositInput.trim() ? parseDailyPrice(depositInput) : 0;
-    if (deposit === null) { setFormError(lang === "da" ? "Depositum skal være et gyldigt positivt beløb." : "Depositionen måste vara ett giltigt positivt belopp."); return; }
+    const deposit = selected.deposit ?? 0;
     setRequestPreparing(true); setFormError("");
     try {
       const contact = await loadCircleListingContact(selected.id);
@@ -468,7 +476,7 @@ export default function HomePage() {
       const updated = {...loan,[field]:savedNote};
       setLoans(items=>items.map(item=>item.id === loan.id ? updated : item));
       setAgreementLoan(updated);
-      if (phase === "handover") setHandoverNoteDraft(savedNote); else setReturnNoteDraft(savedNote);
+      if (phase === "handover") setHandoverEdit(null); else setReturnEdit(null);
       toast.success(lang === "da" ? "Noten er gemt og klar til begge parters godkendelse." : "Anteckningen är sparad och klar för båda parternas godkännande.");
     } catch (error) { toast.error(agreementErrorText(error,lang)); }
     finally { setNoteBusy(null); }
@@ -476,14 +484,17 @@ export default function HomePage() {
 
   function openAgreement(loan: Loan) {
     setPhotoReviews({});
-    setHandoverNoteDraft(loan.handoverNote ?? "");
-    setReturnNoteDraft(loan.returnNote ?? "");
+    setHandoverEdit(null);setReturnEdit(null);
     setAgreementLoan(loan);
   }
 
   function photosReady(loan:Loan,phase:SignaturePhase) {
     const photos=phasePhotos(loan,phase);
     return !photoBusy && (photos.length === 0 || photoReviews[`${loan.id}:${phase}`] === photoVersion(photos));
+  }
+  function signing(loan:Loan,role:"borrower"|"lender",phase:SignaturePhase) {
+    const result=agreementSigning(loan,user?.uid ?? "",role,phase,phase === "handover" ? handoverNoteDraft : returnNoteDraft,photosReady(loan,phase),lang);
+    return {canSign:result.canSign,waitingReason:result.reason};
   }
   function changeAgreementPhotos(id:string,phase:SignaturePhase,photos:AgreementPhoto[]) {
     const field=phase === "handover" ? "handoverPhotos" : "returnPhotos";
@@ -628,7 +639,7 @@ export default function HomePage() {
             <div className="mb-4 mt-7 flex items-end justify-between">
               <div><p className="text-sm font-bold uppercase tracking-[0.14em] text-[#777b90]">{`${filtered.length} ${t.results}`}{radius !== "all" ? ` · ${radius} km` : ""}</p><h2 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">{t.popular}</h2></div>
             </div>
-            {filtered.length ? <div className="listing-grid">{filtered.map((item) => <ListingCard key={item.id} item={item} freeLabel={priceLabel(item, lang)} onOpen={() => setSelected(item)} />)}</div> :
+            {filtered.length ? <div className="listing-grid">{filtered.map((item) => <ListingCard key={item.id} item={item} lang={lang} freeLabel={priceLabel(item, lang)} onOpen={() => setSelected(item)} />)}</div> :
               <div className="rounded-xl border border-dashed border-[#cbd0dd] bg-white px-6 py-16 text-center"><Search className="mx-auto mb-4 text-[#85899b]" size={34} /><p className="font-bold">{t.noResults}</p></div>}
           </>}
 
@@ -673,21 +684,22 @@ export default function HomePage() {
         <MobileNav icon={CircleUserRound} label={t.navProfile} active={tab === "profile"} onClick={() => setTab("profile")} />
       </nav>
 
-      <Dialog open={!!selected} onOpenChange={(open) => !open && setSelected(null)}>
-        {selected && <DialogContent className="max-h-[92vh] overflow-y-auto rounded-xl border-0 p-0 sm:max-w-[600px]">
+      <Dialog open={!!selected && !showRequest} onOpenChange={(open) => !open && setSelected(null)}>
+        {selected && <DialogContent className="listing-dialog max-h-[calc(100dvh-1rem)] overflow-y-auto rounded-xl border-0 p-0 sm:max-w-[600px]">
           {selected.photos?.length ? <div className={`listing-detail-gallery ${selected.photos.length === 1 ? "single" : ""}`}>
             {selected.photos.map((photo, index) => <img key={`${photo.name}-${index}`} src={photo.src} alt={`${selected.name} · billede ${index + 1}`} />)}
             <span className="absolute left-5 top-5 rounded-md bg-white px-3 py-1.5 text-sm font-bold shadow-sm">{priceLabel(selected, lang)}</span>
-          </div> : <div className={`relative flex h-52 items-center justify-center bg-gradient-to-br ${selected.color}`}><selected.icon size={86} strokeWidth={1.35} className="text-[#172936]/75" /><span className="absolute left-5 top-5 rounded-full bg-white px-3 py-1.5 text-sm font-bold">{priceLabel(selected, lang)}</span></div>}
-          <div className="p-6 sm:p-8">
+          </div> : <div className={`listing-placeholder relative flex h-52 items-center justify-center bg-gradient-to-br ${selected.color}`}><selected.icon size={86} strokeWidth={1.35} className="text-[#172936]/75" /><span className="absolute left-5 top-5 rounded-full bg-white px-3 py-1.5 text-sm font-bold">{priceLabel(selected, lang)}</span></div>}
+          <div className="listing-dialog-body">
             <DialogHeader className="text-left"><DialogTitle className="text-2xl font-bold tracking-tight">{selected.name}</DialogTitle><DialogDescription className="flex flex-wrap items-center gap-3"><span className="flex items-center gap-1"><MapPin size={15} />{selected.city} · {Number.isFinite(selected.distance) ? `ca. ${selected.distance.toLocaleString(lang === "da" ? "da-DK" : "sv-SE", {maximumFractionDigits: 1})} km` : ""}</span><span className="flex items-center gap-1 font-bold text-[#172936]"><Star size={15} fill="#aa6500" className="text-[#aa6500]" />{selected.rating}</span></DialogDescription></DialogHeader>
             <p className="mt-5 leading-7 text-[#575b6e]">{selected.description}</p>
+            <DepositSummary amount={selected.deposit ?? 0} country={selected.country} lang={lang} />
             <div className="mt-5 flex items-center justify-between rounded-xl bg-[#f2f4f9] p-4"><div className="flex items-center gap-3"><span className="flex size-10 items-center justify-center rounded-full bg-[#008EAC] font-bold text-white">{selected.owner[0]}</span><div><p className="font-bold">{selected.owner}</p><p className="text-xs text-[#777b8e]">{t.verify}</p></div></div><ShieldCheck size={22} className="text-[#587560]" /></div>
             <div className="mt-4 flex items-center gap-2 text-sm font-bold text-[#31744c]"><Check size={17} />{selected.availability}</div>
             {selected.owned ? <div className="mt-7 grid grid-cols-2 gap-3">
               <Button variant="outline" className="h-13 rounded-xl" onClick={() => openEdit(selected)}><Pencil size={17} />{lang === "da" ? "Rediger" : "Redigera"}</Button>
               <Button variant="outline" className="h-13 rounded-xl border-[#d9aaaa] text-[#9c3030] hover:bg-[#fff1f1] hover:text-[#842424]" onClick={() => setPendingDelete(selected)}><Trash2 size={17} />{lang === "da" ? "Slet" : "Ta bort"}</Button>
-            </div> : <Button className="mt-7 h-13 w-full rounded-xl bg-[#008EAC] text-base font-semibold text-white hover:bg-[#006F88]" onClick={openRequest}>{selected.dailyPrice > 0 ? (lang === "da" ? "Spørg om at leje" : "Fråga om att hyra") : t.borrow}</Button>}
+            </div> : <div className="listing-dialog-action"><Button className="mt-7 h-13 w-full rounded-xl bg-[#008EAC] text-base font-semibold text-white hover:bg-[#006F88]" onClick={openRequest}>{selected.dailyPrice > 0 ? (lang === "da" ? "Spørg om at leje" : "Fråga om att hyra") : t.borrow}</Button></div>}
           </div>
         </DialogContent>}
       </Dialog>
@@ -700,7 +712,7 @@ export default function HomePage() {
           {bookingConflict && <p role="alert" className="form-error">{lang === "da" ? "Perioden overlapper en godkendt booking. Vælg andre datoer." : "Perioden överlappar en godkänd bokning. Välj andra datum."}</p>}
           {availabilityError && <p role="status">{lang === "da" ? "Reserverede datoer kunne ikke vises. Ejeren kan kun godkende, hvis perioden er ledig." : "Reserverade datum kunde inte visas. Ägaren kan endast godkänna om perioden är ledig."}</p>}
           <label className="field-label">{t.message}<textarea value={requestMessage} onChange={e=>setRequestMessage(e.target.value)} placeholder={lang === "da" ? "Fortæl kort, hvad du skal bruge tingen til." : "Berätta kort vad du behöver saken till."} rows={4} /></label>
-          <label className="field-label">{lang === "da" ? "Depositum (valgfrit)" : "Deposition (valfritt)"} · {selected?.country === "SE" ? "SEK" : "DKK"}<input inputMode="decimal" value={depositInput} onChange={e=>setDepositInput(e.target.value)} placeholder="0" maxLength={10} /><small>{lang === "da" ? "Beløbet indgår automatisk i lejeaftalen. Ingen betaling trækkes i appen." : "Beloppet tas automatiskt med i hyresavtalet. Ingen betalning dras i appen."}</small></label>
+          {selected && <DepositSummary amount={selected.deposit ?? 0} country={selected.country} lang={lang} explain />}
           <div className="price-summary">
             <span>{lang === "da" ? "Pris for perioden" : "Pris för perioden"}</span>
             <strong>{selected && dateValid && days ? (selected.dailyPrice ? money(selected.dailyPrice * days, selected.country, lang) : t.free) : "—"}</strong>
@@ -729,6 +741,7 @@ export default function HomePage() {
       <Dialog open={!!agreementLoan} onOpenChange={open => !open && setAgreementLoan(null)}>
         {agreementLoan && <DialogContent className="agreement-dialog max-h-[94vh] overflow-y-auto rounded-xl sm:max-w-[760px]">
           <AgreementJourney agreement={agreementLoan} uid={user?.uid ?? ""} lang={lang} names={{borrower:agreementLoan.borrower.name,lender:agreementLoan.item.owner}} onContinue={phase=>{const section=document.getElementById(`agreement-${phase}-section`);section?.scrollIntoView({block:"start",behavior:"instant"});section?.focus({preventScroll:true});}} />
+          <div className="agreement-account-help no-print"><p>{lang === "da" ? "Begge underskriver fra hver sin konto. Åbn samme ticket under Mine lån → Jeg låner / Jeg udlåner." : "Båda signerar från varsitt konto. Öppna samma ticket under Mina lån → Jag lånar / Jag lånar ut."}<br/>{lang === "da" ? "Du er logget ind som" : "Du är inloggad som"}: <b>{user?.email}</b></p><Button variant="outline" onClick={agreementsChanged}><RefreshCw size={16}/>{lang === "da" ? "Opdatér aftalen" : "Uppdatera avtalet"}</Button></div>
           <div className="print-agreement">
             <p className="agreement-lifecycle-status">{stageLabels[lang][agreementStage(agreementLoan)]}</p>
             {agreementStage(agreementLoan) === "requested" && <p className="no-print">{lang === "da" ? "Ejeren skal først godkende forespørgslen under Mine lån. Derefter åbnes underskrifterne." : "Ägaren måste först godkänna förfrågan under Mina lån. Därefter öppnas signering."}</p>}
@@ -739,7 +752,7 @@ export default function HomePage() {
             <section className="agreement-id-check"><h3><ShieldCheck size={19} />{lang === "da" ? "Kontrol ved overdragelsen" : "Kontroll vid överlämningen"}</h3><p>{lang === "da" ? "Parterne skal sikre sig, hvem de indgår aftalen med." : "Parterna ska säkerställa vem de ingår avtalet med."}</p><ul><li>{lang === "da" ? "Begge parter foreviser gyldig billedlegitimation med navn og adresse." : "Båda parter visar giltig fotolegitimation med namn och adress."}</li><li>{lang === "da" ? "Navn og adresse på legitimationen sammenholdes med oplysningerne i aftalen." : "Namn och adress på legitimationen jämförs med uppgifterna i avtalet."}</li><li>{lang === "da" ? "Aftalen underskrives på telefonen eller udskrives og underskrives fysisk af begge parter." : "Avtalet signeras på telefonen eller skrivs ut och undertecknas fysiskt av båda parter."}</li></ul><p className="id-privacy">{lang === "da" ? "Tag ikke kopi eller foto af legitimationen, medmindre personen udtrykkeligt har accepteret det og der er et lovligt behov." : "Ta inte en kopia eller ett foto av legitimationen om personen inte uttryckligen har godkänt det och det finns ett lagligt behov."}</p></section>
             <AgreementConditionNote phase="handover" lang={lang} savedNote={agreementLoan.handoverNote ?? ""} draft={handoverNoteDraft} onChange={setHandoverNoteDraft} saved={Boolean(agreementLoan.saved)} locked={Boolean(agreementLoan.borrowerSignature || agreementLoan.lenderSignature)} enabled={agreementStage(agreementLoan) === "accepted"} onSave={() => void storeAgreementNote(agreementLoan, "handover")} busy={noteBusy === "handover"} />
             {agreementPhotos(agreementLoan,"handover")}
-            <div className="agreement-signatures"><SignatureBox title={lang === "da" ? "Låners underskrift ved udlevering" : "Låntagarens signatur vid utlämning"} name={agreementLoan.borrower.name} signature={agreementLoan.borrowerSignature} lang={lang} canSign={Boolean(photosReady(agreementLoan,"handover") && agreementLoan.saved && agreementStage(agreementLoan) === "accepted" && handoverNoteDraft.trim() === (agreementLoan.handoverNote ?? "") && user?.uid === agreementLoan.borrowerUid)} busy={signatureBusy === `${agreementLoan.id}-handover-borrower`} onSign={dataUrl => void signAgreement(agreementLoan, "borrower", dataUrl)} /><SignatureBox title={lang === "da" ? "Ejers underskrift ved udlevering" : "Ägarens signatur vid utlämning"} name={agreementLoan.item.owner} signature={agreementLoan.lenderSignature} lang={lang} canSign={Boolean(photosReady(agreementLoan,"handover") && agreementLoan.saved && agreementStage(agreementLoan) === "accepted" && handoverNoteDraft.trim() === (agreementLoan.handoverNote ?? "") && user?.uid === agreementLoan.lenderUid)} busy={signatureBusy === `${agreementLoan.id}-handover-lender`} onSign={dataUrl => void signAgreement(agreementLoan, "lender", dataUrl)} /></div>
+            <div className="agreement-signatures"><SignatureBox title={lang === "da" ? "Låners underskrift ved udlevering" : "Låntagarens signatur vid utlämning"} name={agreementLoan.borrower.name} signature={agreementLoan.borrowerSignature} lang={lang} {...signing(agreementLoan,"borrower","handover")} busy={signatureBusy === `${agreementLoan.id}-handover-borrower`} onSign={dataUrl => void signAgreement(agreementLoan, "borrower", dataUrl)} /><SignatureBox title={lang === "da" ? "Ejers underskrift ved udlevering" : "Ägarens signatur vid utlämning"} name={agreementLoan.item.owner} signature={agreementLoan.lenderSignature} lang={lang} {...signing(agreementLoan,"lender","handover")} busy={signatureBusy === `${agreementLoan.id}-handover-lender`} onSign={dataUrl => void signAgreement(agreementLoan, "lender", dataUrl)} /></div>
             <p className="agreement-legal"><LockKeyhole size={15} />{lang === "da" ? "Ved underskrift bekræfter hver part, at oplysningerne er korrekte, og at den anden parts navn og adresse er kontrolleret mod forevist ID." : "Genom underskrift bekräftar varje part att uppgifterna är korrekta och att den andra partens namn och adress har kontrollerats mot visad legitimation."}</p>
             <section className={`return-receipt ${agreementLoan.returnedAt ? "is-complete" : ""}`}>
               <header><div><p className="eyebrow">{lang === "da" ? "Returkvittering" : "Returkvitto"}</p><h3>{agreementLoan.returnedAt ? (agreementLoan.returnCondition === "remarks" ? (lang === "da" ? "Tilbageleveret med bemærkninger" : "Återlämnad med anmärkningar") : (lang === "da" ? "Tilbageleveret i god stand" : "Återlämnad i gott skick")) : (lang === "da" ? "Kvittering for tilbagelevering" : "Kvitto på återlämning")}</h3></div>{agreementLoan.returnedAt && <span><Check size={16} />{lang === "da" ? "Afsluttet" : "Avslutat"}</span>}</header>
@@ -748,7 +761,7 @@ export default function HomePage() {
               {agreementLoan.returnedAt && <p className="return-completed-at">{lang === "da" ? "Retur registreret" : "Retur registrerad"}: {new Intl.DateTimeFormat(lang === "da" ? "da-DK" : "sv-SE", {dateStyle:"long",timeStyle:"short"}).format(new Date(agreementLoan.returnedAt))}</p>}
               <AgreementConditionNote phase="return" lang={lang} savedNote={agreementLoan.returnNote ?? ""} draft={returnNoteDraft} onChange={setReturnNoteDraft} saved={Boolean(agreementLoan.saved)} locked={Boolean(agreementLoan.borrowerReturnSignature || agreementLoan.lenderReturnSignature || agreementLoan.returnedAt)} enabled={Boolean(agreementLoan.borrowerSignature && agreementLoan.lenderSignature)} onSave={() => void storeAgreementNote(agreementLoan, "return")} busy={noteBusy === "return"} />
             {agreementPhotos(agreementLoan,"return")}
-              <div className="agreement-signatures return-signatures"><SignatureBox title={lang === "da" ? "Låner · aflevering og note godkendt" : "Låntagare · återlämning och anteckning godkänd"} name={agreementLoan.borrower.name} signature={agreementLoan.borrowerReturnSignature} lang={lang} canSign={Boolean(photosReady(agreementLoan,"return") && agreementLoan.saved && agreementLoan.borrowerSignature && agreementLoan.lenderSignature && returnNoteDraft.trim() === (agreementLoan.returnNote ?? "") && user?.uid === agreementLoan.borrowerUid)} busy={signatureBusy === `${agreementLoan.id}-return-borrower`} onSign={dataUrl => void signAgreement(agreementLoan, "borrower", dataUrl, "return")} /><SignatureBox title={lang === "da" ? "Ejer · modtagelse og note godkendt" : "Ägare · mottagande och anteckning godkänd"} name={agreementLoan.item.owner} signature={agreementLoan.lenderReturnSignature} lang={lang} canSign={Boolean(photosReady(agreementLoan,"return") && agreementLoan.saved && agreementLoan.borrowerSignature && agreementLoan.lenderSignature && returnNoteDraft.trim() === (agreementLoan.returnNote ?? "") && user?.uid === agreementLoan.lenderUid)} busy={signatureBusy === `${agreementLoan.id}-return-lender`} onSign={dataUrl => void signAgreement(agreementLoan, "lender", dataUrl, "return")} /></div>
+              <div className="agreement-signatures return-signatures"><SignatureBox title={lang === "da" ? "Låner · aflevering og note godkendt" : "Låntagare · återlämning och anteckning godkänd"} name={agreementLoan.borrower.name} signature={agreementLoan.borrowerReturnSignature} lang={lang} {...signing(agreementLoan,"borrower","return")} busy={signatureBusy === `${agreementLoan.id}-return-borrower`} onSign={dataUrl => void signAgreement(agreementLoan, "borrower", dataUrl, "return")} /><SignatureBox title={lang === "da" ? "Ejer · modtagelse og note godkendt" : "Ägare · mottagande och anteckning godkänd"} name={agreementLoan.item.owner} signature={agreementLoan.lenderReturnSignature} lang={lang} {...signing(agreementLoan,"lender","return")} busy={signatureBusy === `${agreementLoan.id}-return-lender`} onSign={dataUrl => void signAgreement(agreementLoan, "lender", dataUrl, "return")} /></div>
             </section>
           </div>
           <div className="agreement-actions no-print"><div className="agreement-choice-buttons"><Button disabled={agreementSaving || agreementLoan.saved} onClick={() => void storeAgreement(agreementLoan)}><Save size={17} />{agreementLoan.saved ? (lang === "da" ? "Gemt på kontoen" : "Sparat på kontot") : agreementSaving ? (lang === "da" ? "Gemmer…" : "Sparar…") : (lang === "da" ? "Gem på min konto" : "Spara på mitt konto")}</Button><Button variant="outline" onClick={() => printAgreementDocument(lang)}><Printer size={17} />{lang === "da" ? "Udskriv aftalen" : "Skriv ut avtalet"}</Button></div><span>{lang === "da" ? "Gemte aftaler kan ses under Mine lån i 12 måneder." : "Sparade avtal visas under Mina lån i 12 månader."}</span></div>
@@ -784,6 +797,7 @@ export default function HomePage() {
               <label htmlFor="price-paid" className={pricing === "paid" ? "selected" : ""}><RadioGroupItem id="price-paid" value="paid" />{lang === "da" ? "Mod betaling" : "Mot betalning"}</label>
             </RadioGroup>
             {pricing === "paid" && <label className="field-label mt-4">{lang === "da" ? "Pris pr. kalenderdag" : "Pris per kalenderdag"} · {newCountry === "DK" ? "DKK" : "SEK"}<input inputMode="decimal" value={priceInput} onChange={e=>setPriceInput(e.target.value)} placeholder="50" maxLength={10} /><small>{lang === "da" ? "Ingen automatisk betaling. Beløbet aftales med låneren." : "Ingen automatisk betalning. Beloppet avtalas med låntagaren."}</small></label>}
+            <label className="field-label mt-4">{lang === "da" ? "Dit depositum (valgfrit)" : "Din deposition (valfritt)"} · {newCountry === "DK" ? "DKK" : "SEK"}<input inputMode="decimal" value={newDepositInput} onChange={e=>setNewDepositInput(e.target.value)} placeholder="0" maxLength={10}/><small>{lang === "da" ? "Du fastsætter beløbet som ejer. Det vises på annoncen og i nye aftaler. Skriv 0 for intet depositum." : "Du bestämmer beloppet som ägare. Det visas på annonsen och i nya avtal. Skriv 0 för ingen deposition."}</small></label>
           </fieldset>
           <label className="field-label">{t.description}<textarea value={newDescription} onChange={(e) => setNewDescription(e.target.value)} rows={4} placeholder={lang === "da" ? "Stand, tilbehør og det låneren bør vide…" : "Skick, tillbehör och det låntagaren bör veta…"} /></label>
           {formError && <p role="alert" className="form-error">{formError}</p>}
@@ -877,9 +891,13 @@ function agreementFromCloud(record: StoredAgreement): Loan {
   };
 }
 
-function ListingCard({ item, freeLabel, onOpen }: { item: Listing; freeLabel: string; onOpen: () => void }) {
+function DepositSummary({amount,country,lang,explain=false}:{amount:number;country:Country;lang:Lang;explain?:boolean}) {
+  return <div className="listing-deposit"><span>{lang === "da" ? "Depositum fastsat af ejeren" : "Deposition bestämd av ägaren"}</span><strong>{amount ? money(amount,country,lang) : (lang === "da" ? "Intet depositum" : "Ingen deposition")}</strong>{explain && <small>{lang === "da" ? "Beløbet overføres til aftalen. Betaling aftales direkte med ejeren; Circle opkræver det ikke." : "Beloppet förs över till avtalet. Betalning avtalas direkt med ägaren; Circle tar inte betalt för det."}</small>}</div>;
+}
+
+function ListingCard({ item, lang, freeLabel, onOpen }: { item: Listing; lang:Lang; freeLabel: string; onOpen: () => void }) {
   const Icon = item.icon;
-  return <button onClick={onOpen} className="listing-card text-left"><div className={`listing-image bg-gradient-to-br ${item.color}`}>{item.photos?.[0] ? <img src={item.photos[0].src} alt={item.name} /> : <Icon size={57} strokeWidth={1.4} className="text-[#172936]/70" />}<span className={`free-tag ${item.dailyPrice === 0 ? "is-free" : "is-paid"}`}>{freeLabel}</span><span className="heart-button"><Heart size={18} /></span>{item.photos && item.photos.length > 1 && <span className="photo-count"><Camera size={14} />{item.photos.length}</span>}</div><div className="p-4"><div className="flex items-start justify-between gap-2"><h3>{item.name}</h3><span className="mt-1 flex shrink-0 items-center gap-1 text-xs font-bold">{item.rating > 0 ? <><Star size={13} fill="#aa6500" className="text-[#aa6500]" />{item.rating}</> : "Ny"}</span></div><p className="mt-2 flex items-center gap-1.5 text-sm text-[#6d7185]"><MapPin size={15} />{item.city} · {Number.isFinite(item.distance) ? `ca. ${item.distance.toLocaleString("da-DK", {maximumFractionDigits: 1})} km` : ""}</p><div className="mt-3 flex items-center gap-2"><span className="size-2 rounded-full bg-[#38a66b]" /><span className="text-xs font-bold text-[#397252]">{item.availability}</span></div></div></button>;
+  return <button onClick={onOpen} className="listing-card text-left"><div className={`listing-image bg-gradient-to-br ${item.color}`}>{item.photos?.[0] ? <img src={item.photos[0].src} alt={item.name} /> : <Icon size={57} strokeWidth={1.4} className="text-[#172936]/70" />}<span className={`free-tag ${item.dailyPrice === 0 ? "is-free" : "is-paid"}`}>{freeLabel}</span><span className="heart-button"><Heart size={18} /></span>{item.photos && item.photos.length > 1 && <span className="photo-count"><Camera size={14} />{item.photos.length}</span>}</div><div className="p-4"><div className="flex items-start justify-between gap-2"><h3>{item.name}</h3><span className="mt-1 flex shrink-0 items-center gap-1 text-xs font-bold">{item.rating > 0 ? <><Star size={13} fill="#aa6500" className="text-[#aa6500]" />{item.rating}</> : "Ny"}</span></div><p className="mt-2 flex items-center gap-1.5 text-sm text-[#6d7185]"><MapPin size={15} />{item.city} · {Number.isFinite(item.distance) ? `ca. ${item.distance.toLocaleString("da-DK", {maximumFractionDigits: 1})} km` : ""}</p><p className="mt-2 text-sm text-[#172936]">{lang === "da" ? "Depositum" : "Deposition"}: {item.deposit ? money(item.deposit,item.country,lang) : (lang === "da" ? "Intet" : "Ingen")}</p><div className="mt-3 flex items-center gap-2"><span className="size-2 rounded-full bg-[#38a66b]" /><span className="text-xs font-bold text-[#397252]">{item.availability}</span></div></div></button>;
 }
 
 function SideNav({ icon: Icon, label, active, badge, onClick }: { icon: typeof Home; label: string; active?: boolean; badge?: string; onClick: () => void }) {
@@ -1001,7 +1019,7 @@ function AgreementConditionNote({ phase, lang, savedNote, draft, onChange, saved
   </section>;
 }
 
-function SignatureBox({ title, name, signature, lang, canSign = true, busy = false, onSign }: { title: string; name: string; signature?: AgreementSignature; lang: Lang; canSign?: boolean; busy?: boolean; onSign: (dataUrl: string) => void }) {
+function SignatureBox({ title, name, signature, lang, canSign = true, busy = false, waitingReason, onSign }: { title: string; name: string; signature?: AgreementSignature; lang: Lang; canSign?: boolean; busy?: boolean; waitingReason?:string; onSign: (dataUrl: string) => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
   const [hasInk, setHasInk] = useState(false);
@@ -1020,7 +1038,7 @@ function SignatureBox({ title, name, signature, lang, canSign = true, busy = fal
   }
   function stop() { drawing.current = false; }
   function clear() { const canvas = canvasRef.current; if (canvas) canvas.getContext("2d")?.clearRect(0,0,canvas.width,canvas.height); setHasInk(false); }
-  return <section className={signature ? "is-signed" : ""}><small>{title}</small><b>{name}</b>{signature ? <><img className="signature-image" src={signature.dataUrl} alt={lang === "da" ? `Underskrift fra ${name}` : `Signatur från ${name}`} /><time>{new Intl.DateTimeFormat(lang === "da" ? "da-DK" : "sv-SE", { dateStyle: "medium", timeStyle: "short" }).format(new Date(signature.signedAt))}</time></> : <>{canSign ? <><div className="signature-pad no-print"><canvas ref={canvasRef} width={520} height={150} onPointerDown={start} onPointerMove={move} onPointerUp={stop} onPointerCancel={stop} aria-label={lang === "da" ? `Underskriftsfelt for ${name}` : `Signaturfält för ${name}`} /><span>{lang === "da" ? "Skriv med fingeren eller musen" : "Skriv med fingret eller musen"}</span></div><div className="signature-buttons no-print"><Button type="button" variant="outline" disabled={busy} onClick={clear}>{lang === "da" ? "Ryd" : "Rensa"}</Button><Button type="button" disabled={!hasInk || busy} onClick={() => { const dataUrl=canvasRef.current?.toDataURL("image/png"); if (dataUrl) onSign(dataUrl); }}>{busy ? <LoaderCircle className="animate-spin" size={17} /> : <FileSignature size={17} />}{busy ? (lang === "da" ? "Gemmer…" : "Sparar…") : (lang === "da" ? "Godkend underskrift" : "Godkänn signatur")}</Button></div></> : <p className="signature-waiting no-print">{lang === "da" ? "Afventer denne parts underskrift." : "Inväntar den här partens signatur."}</p>}<div className="paper-signature-line"><span>{lang === "da" ? "Dato og fysisk underskrift" : "Datum och fysisk underskrift"}</span></div></>}</section>;
+  return <section className={signature ? "is-signed" : ""}><small>{title}</small><b>{name}</b>{signature ? <><img className="signature-image" src={signature.dataUrl} alt={lang === "da" ? `Underskrift fra ${name}` : `Signatur från ${name}`} /><time>{new Intl.DateTimeFormat(lang === "da" ? "da-DK" : "sv-SE", { dateStyle: "medium", timeStyle: "short" }).format(new Date(signature.signedAt))}</time></> : <>{canSign ? <><div className="signature-pad no-print"><canvas ref={canvasRef} width={520} height={150} onPointerDown={start} onPointerMove={move} onPointerUp={stop} onPointerCancel={stop} aria-label={lang === "da" ? `Underskriftsfelt for ${name}` : `Signaturfält för ${name}`} /><span>{lang === "da" ? "Skriv med fingeren eller musen" : "Skriv med fingret eller musen"}</span></div><div className="signature-buttons no-print"><Button type="button" variant="outline" disabled={busy} onClick={clear}>{lang === "da" ? "Ryd" : "Rensa"}</Button><Button type="button" disabled={!hasInk || busy} onClick={() => { const dataUrl=canvasRef.current?.toDataURL("image/png"); if (dataUrl) onSign(dataUrl); }}>{busy ? <LoaderCircle className="animate-spin" size={17} /> : <FileSignature size={17} />}{busy ? (lang === "da" ? "Gemmer…" : "Sparar…") : (lang === "da" ? "Godkend underskrift" : "Godkänn signatur")}</Button></div></> : <p className="signature-waiting no-print">{waitingReason || (lang === "da" ? "Afventer denne parts underskrift." : "Inväntar den här partens signatur.")}</p>}<div className="paper-signature-line"><span>{lang === "da" ? "Dato og fysisk underskrift" : "Datum och fysisk underskrift"}</span></div></>}</section>;
 }
 
 function formatAgreementDate(value: string, lang: Lang) {

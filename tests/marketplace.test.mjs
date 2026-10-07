@@ -10,6 +10,11 @@ const compiled = ts.transpileModule(readFileSync(source, "utf8"), {
 }).outputText;
 const m = {};
 new Function("require", "exports", compiled)(createRequire(source), m);
+test("owner deposit accepts empty or zero and bounded decimal amounts",()=>{
+  for(const input of ["","0","0,00"," 0.0 "]) assert.equal(m.parseDeposit(input),0);
+  assert.equal(m.parseDeposit("250,50"),25050);assert.equal(m.parseDeposit("100000"),10000000);
+  for(const input of ["-10","2.999","100001","NaN","1e4"]) assert.equal(m.parseDeposit(input),null);
+});
 
 test("nationwide postcode sources contain both countries and expected cities", () => {
   assert.ok(m.places.filter(p=>p.country === "DK").length > 1000);

@@ -17,6 +17,7 @@ export type CircleListingRecord = {
   city: string;
   place: Place;
   dailyPrice: number;
+  deposit: number;
   photos: CompressedListingImage[];
   active: boolean;
 };
@@ -42,6 +43,7 @@ function cleanRecord(id: string, value: Record<string, unknown>): CircleListingR
     city:place.city,
     place,
     dailyPrice:typeof value.dailyPrice === "number" ? value.dailyPrice : 0,
+    deposit:typeof value.deposit === "number" ? value.deposit : 0,
     photos:photos.slice(0, 2),
     active:true,
   };

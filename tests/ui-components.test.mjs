@@ -14,12 +14,40 @@ const vite = await createServer({
   configFile: false,
   root,
   resolve: { alias: { "@": root } },
-  plugins:[{name:"test-only-loan-export",transform(code,id){if(id === path.join(root,"app/page.tsx")) return code + "\nexport { RequestsView };";}}],
+  plugins:[{name:"test-only-loan-export",transform(code,id){if(id === path.join(root,"app/page.tsx")) return code + "\nexport { RequestsView, DepositSummary, SignatureBox };";}}],
   server: { middlewareMode: true },
 });
 
 after(async () => {
   await vite.close();
+});
+
+test("owner deposit is displayed in both languages with no borrower input",async()=>{
+  const {DepositSummary}=await vite.ssrLoadModule("/app/page.tsx");
+  for(const [lang,country,label,currency] of [["da","DK","Depositum fastsat af ejeren","DKK"],["sv","SE","Deposition bestämd av ägaren","SEK"]]) {
+    const html=renderToStaticMarkup(React.createElement(DepositSummary,{amount:25050,country,lang,explain:true}));
+    assert.ok(html.includes(label));assert.ok(html.includes(currency));assert.match(html,/250,50/);assert.doesNotMatch(html,/<input/);
+  }
+  const page=await readFile(path.join(root,"app/page.tsx"),"utf8");
+  const request=page.slice(page.indexOf('<Dialog open={showRequest}'),page.indexOf('<Dialog open={notificationsOpen}'));
+  assert.match(request,/<DepositSummary/);assert.doesNotMatch(request,/setDeposit|depositInput|newDepositInput/);
+  assert.match(page,/open=\{!!selected && !showRequest\}/);
+});
+test("signing controls show actionable reasons rather than silently waiting for own signature",async()=>{
+  const {SignatureBox}=await vite.ssrLoadModule("/app/page.tsx");
+  const html=renderToStaticMarkup(React.createElement(SignatureBox,{title:"Ejer",name:"Owner",lang:"da",canSign:false,waitingReason:"Gem noten først",onSign(){}}));
+  assert.match(html,/Gem noten først/);assert.doesNotMatch(html,/Afventer denne parts/);
+  const ready=renderToStaticMarkup(React.createElement(SignatureBox,{title:"Ejer",name:"Owner",lang:"da",canSign:true,onSign(){}}));
+  assert.match(ready,/<canvas/);assert.match(ready,/Godkend underskrift/);
+});
+test("tablet layout uses responsive columns without global zoom and caps listing images",async()=>{
+  const css=await readFile(path.join(root,"app/globals.css"),"utf8");
+  assert.doesNotMatch(css,/zoom:\s*\.8|width:\s*125%/);
+  assert.match(css,/@media \(min-width:900px\) and \(max-width:1199px\)/);
+  assert.match(css,/@media \(min-width:640px\) and \(max-width:899px\)/);
+  assert.match(css,/\.listing-detail-gallery \{[^}]*grid-template-rows:minmax\(0,1fr\)[^}]*height:clamp\(100px,25dvh,220px\)[^}]*overflow:hidden/);
+  assert.match(css,/\.listing-detail-gallery img \{[^}]*object-fit:contain/);
+  assert.match(css,/\.auth-card input \{[^}]*font-size:16px/);
 });
 
 test("private photo controls are translated, camera-ready and do not expand the paper agreement",async()=>{

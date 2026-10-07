@@ -5,7 +5,7 @@ import { serverConfig } from "@/lib/server-config";
 type JsonValue = null | boolean | number | string | JsonValue[] | { [key:string]:JsonValue };
 type FirestoreValue = { nullValue?:null; booleanValue?:boolean; integerValue?:string; doubleValue?:number; stringValue?:string; timestampValue?:string; arrayValue?:{values?:FirestoreValue[]}; mapValue?:{fields?:Record<string,FirestoreValue>} };
 type Photo = {src?:string;storagePath?:string;name?:string;bytes?:number;width?:number;height?:number};
-type ListingPayload = {id?:string;name?:string;description?:string;category?:string;country?:string;city?:string;place?:Record<string,JsonValue>;dailyPrice?:number;photos?:Photo[]};
+type ListingPayload = {id?:string;name?:string;description?:string;category?:string;country?:string;city?:string;place?:Record<string,JsonValue>;dailyPrice?:number;deposit?:number;photos?:Photo[]};
 
 const categories = new Set(["transport","tools","garden","leisure","party","kitchen","bike"]);
 function error(message:string, status=400) { return NextResponse.json({error:message},{status}); }
@@ -60,6 +60,9 @@ export async function POST(request:Request) {
 
     const existing = await getFirestoreDocument(`listings/${id}`);
     if (existing?.fields?.ownerUid?.stringValue && existing.fields.ownerUid.stringValue !== identity.localId) return error("Du kan kun redigere dine egne annoncer.",403);
+    // Older clients must not erase an owner's deposit by omitting the field.
+    const deposit = listing?.deposit ?? (existing?.fields?.deposit ? decode(existing.fields.deposit) : 0);
+    if (typeof deposit !== "number" || !Number.isSafeInteger(deposit) || deposit < 0 || deposit > 10_000_000) return error("Depositum skal være mellem 0 og 100.000 kr. med højst to decimaler.");
     if (!existing) {
       const current = await ownerListings(identity.localId);
       const activeCount = current.filter(item => item.data.active !== false).length;
@@ -70,7 +73,7 @@ export async function POST(request:Request) {
     const data:Record<string,JsonValue> = {
       ownerUid:identity.localId, owner:profile.name.split(/\s+/)[0],
       name, description, category:listing!.category!, country, city:String(place.city), place,
-      dailyPrice:listing!.dailyPrice!, photos:photos as unknown as JsonValue[], active:true,
+      dailyPrice:listing!.dailyPrice!, deposit, photos:photos as unknown as JsonValue[], active:true,
     };
     const fields = Object.fromEntries(Object.entries(data).map(([key,value])=>[key,encode(value)]));
     fields.updatedAt = {timestampValue:now};

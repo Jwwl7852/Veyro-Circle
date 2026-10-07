@@ -67,6 +67,8 @@ noticeLabels.sv.photos = "Avtalets bilder har uppdaterats";
 export function agreementErrorText(cause:unknown, lang:"da"|"sv") {
   const message = cause instanceof Error ? cause.message : "Aftalen kunne ikke opdateres.";
   if (lang === "da") return message;
+  if (message.includes("to forskellige konti")) return "Avtalet måste vara kopplat till två olika konton. Skapa en ny förfrågan på rätt annons.";
+  if (message.includes("pris eller depositum er ændret")) return "Annonsens pris eller deposition har ändrats. Stäng förfrågan och öppna annonsen igen.";
   if (message.includes("booket")) return "Saken är redan bokad under en del av perioden. Välj andra datum.";
   if (message.includes("Noten er ændret")) return "Anteckningen har ändrats. Öppna avtalet igen, läs den och signera på nytt.";
   if (message.includes("Billederne er ændret")) return "Bilderna har ändrats. Öppna avtalet igen, granska bilderna och signera på nytt.";
