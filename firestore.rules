@@ -28,6 +28,14 @@ service cloud.firestore {
     match /pushDevices/{deviceId} {
       allow read, write: if false;
     }
+    // Community data is exposed only through scoped, verified server endpoints.
+    match /circlePreferences/{uid} { allow read, write: if false; }
+    match /reviews/{id} { allow read, write: if false; }
+    match /wanted/{id} { allow read, write: if false; }
+    match /wantedLocks/{uid} { allow read, write: if false; }
+    match /listingCalendars/{listingId} {
+      allow read, write: if false;
+    }
     match /bookingLocks/{listingId} {
       allow read, write: if false;
     }

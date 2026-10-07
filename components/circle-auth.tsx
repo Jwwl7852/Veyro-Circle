@@ -55,7 +55,7 @@ export function FirebaseSetupNotice({ lang }: { lang: Lang }) {
   return <div className="firebase-setup" role="status"><AlertCircle size={18} /><div><b>{lang === "da" ? "Udviklingstilstand · Firebase mangler" : "Utvecklingsläge · Firebase saknas"}</b><p>{lang === "da" ? "Demoen virker fortsat, men rigtige konti aktiveres først, når Firebase-værdierne er indsat." : "Demon fungerar fortfarande, men riktiga konton aktiveras först när Firebase-värdena har lagts in."}</p><small>{missingFirebaseConfig.join(" · ")}</small></div></div>;
 }
 
-export function CircleAuthScreen({ lang, setLang }: { lang: Lang; setLang: (lang: Lang) => void }) {
+export function CircleAuthScreen({ lang, setLang,onBrowse }: { lang: Lang; setLang: (lang: Lang) => void; onBrowse?:()=>void }) {
   const [mode, setMode] = useState<Mode>("login");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -107,6 +107,7 @@ export function CircleAuthScreen({ lang, setLang }: { lang: Lang; setLang: (lang
       <small>{da ? "Et produkt fra Veyro Systems ApS" : "En produkt från Veyro Systems ApS"}</small>
     </section>
     <section className="auth-card">
+      {onBrowse && <button type="button" className="browse-back" onClick={onBrowse}>{lang === "da" ? "← Se annoncer uden login" : "← Se annonser utan inloggning"}</button>}
       <div className="auth-language"><button className={lang === "da" ? "active" : ""} onClick={()=>setLang("da")}>Dansk</button><button className={lang === "sv" ? "active" : ""} onClick={()=>setLang("sv")}>Svenska</button></div>
       <div><p className="eyebrow">Veyro Circle</p><h1>{mode === "login" ? (da ? "Log ind" : "Logga in") : mode === "register" ? (da ? "Opret konto" : "Skapa konto") : (da ? "Glemt adgangskode" : "Glömt lösenord")}</h1><p>{mode === "reset" ? (da ? "Indtast din e-mail, så sender vi et sikkert nulstillingslink." : "Ange din e-postadress så skickar vi en säker återställningslänk.") : (da ? "Del, lån og lej ting i dit lokalområde." : "Dela, låna och hyr saker i ditt närområde.")}</p></div>
       <form onSubmit={submit}>

@@ -1,0 +1,16 @@
+"use client";
+import {useEffect,useState} from "react";
+import {communityFetch} from "@/lib/community-client";
+import type {Lang} from "@/lib/marketplace";
+export function ReviewForm({id,lang}:{id:string;lang:Lang}) {
+  const [reviews,setReviews]=useState<Array<Review&{own:boolean}>>([]);
+  const [stars,setStars]=useState("5"),[text,setText]=useState(""),[busy,setBusy]=useState(false),[done,setDone]=useState(false),[error,setError]=useState("");const da=lang==="da";
+  useEffect(()=>{let active=true;communityFetch(`/api/reviews?agreementId=${encodeURIComponent(id)}`).then(d=>{if(active){setReviews(d.reviews);if(d.reviewed)setDone(true);}}).catch(()=>undefined);return()=>{active=false;};},[id]);
+  return <section className="extra-panel no-print"><h3>{da?"Hvordan gik lånet?":"Hur gick lånet?"}</h3>{reviews.map((r,i)=><article key={i}><b>{r.author} · {r.stars}/5</b><p>{r.text}</p></article>)}{done?<p role="status">{da?"Tak. Din anmeldelse er gemt.":"Tack. Ditt omdöme har sparats."}</p>:<form onSubmit={async e=>{e.preventDefault();setBusy(true);setError("");try{await communityFetch("/api/reviews",{id,stars:Number(stars),text});setDone(true);}catch(cause){setError(cause instanceof Error&&cause.message==="ALREADY_REVIEWED"?(da?"Du har allerede anmeldt denne aftale.":"Du har redan lämnat ett omdöme om avtalet."):(da?"Anmeldelsen kunne ikke gemmes. Begge skal have underskrevet returen.":"Omdömet kunde inte sparas. Båda måste ha signerat återlämningen."));}finally{setBusy(false);}}}><label>{da?"Din vurdering af modparten":"Ditt omdöme om motparten"}<select value={stars} onChange={e=>setStars(e.target.value)}>{[5,4,3,2,1].map(n=><option key={n} value={n}>{n} / 5</option>)}</select></label><label>{da?"Kommentar (offentlig, højst 600 tegn)":"Kommentar (offentlig, högst 600 tecken)"}<textarea value={text} maxLength={600} onChange={e=>setText(e.target.value)} /></label><p>{da?"Beskriv oplevelsen sagligt. Undlad telefonnumre, adresser og andre private oplysninger.":"Beskriv upplevelsen sakligt. Undvik telefonnummer, adresser och andra privata uppgifter."}</p><button disabled={busy}>{da?"Gem anmeldelse":"Spara omdöme"}</button>{error&&<p role="alert">{error}</p>}</form>}</section>;
+}
+type Review={author:string;stars:number;text:string;createdAt:string};
+export function ListingReviews({id,lang}:{id:string;lang:Lang}) {
+  const [data,setData]=useState<{reviews:Review[];average:number|null;count:number}|null>(null),[failed,setFailed]=useState(false);
+  useEffect(()=>{let active=true;fetch(`/api/reviews?listingId=${encodeURIComponent(id)}`,{cache:"no-store"}).then(async r=>{if(!r.ok)throw Error();return r.json();}).then(d=>{if(active)setData(d);}).catch(()=>{if(active)setFailed(true);});return()=>{active=false;};},[id]);
+  return <section className="extra-panel"><h3>{lang==="da"?"Anmeldelser fra gennemførte lån":"Omdömen från avslutade lån"}</h3>{failed?<p>{lang==="da"?"Anmeldelser kunne ikke hentes.":"Omdömen kunde inte hämtas."}</p>:!data?<p>…</p>:!data.count?<p>{lang==="da"?"Ingen anmeldelser endnu.":"Inga omdömen ännu."}</p>:<><p><strong>{data.average?.toFixed(1)} / 5</strong> · {data.count}</p>{data.reviews.map((r,i)=><article key={i}><strong>{r.author} · {r.stars}/5</strong><small> · {r.createdAt.slice(0,10)}</small><p>{r.text}</p></article>)}</>}</section>;
+}

@@ -1,3 +1,7 @@
+import { after } from "next/server";
+import { notifyListingMatches } from "@/lib/search-alerts";
+import type { Place } from "@/lib/marketplace";
+import { cleanDetails } from "@/lib/listing-details";
 import { NextResponse } from "next/server";
 import { firestoreDocumentUrl, getFirestoreDocument, getServerProfile, serviceToken, verifyFirebaseRequest } from "@/lib/firebase-server";
 import { serverConfig } from "@/lib/server-config";
@@ -5,7 +9,7 @@ import { serverConfig } from "@/lib/server-config";
 type JsonValue = null | boolean | number | string | JsonValue[] | { [key:string]:JsonValue };
 type FirestoreValue = { nullValue?:null; booleanValue?:boolean; integerValue?:string; doubleValue?:number; stringValue?:string; timestampValue?:string; arrayValue?:{values?:FirestoreValue[]}; mapValue?:{fields?:Record<string,FirestoreValue>} };
 type Photo = {src?:string;storagePath?:string;name?:string;bytes?:number;width?:number;height?:number};
-type ListingPayload = {id?:string;name?:string;description?:string;category?:string;country?:string;city?:string;place?:Record<string,JsonValue>;dailyPrice?:number;deposit?:number;photos?:Photo[]};
+type ListingPayload = {id?:string;name?:string;description?:string;category?:string;country?:string;city?:string;place?:Record<string,JsonValue>;dailyPrice?:number;deposit?:number;photos?:Photo[];details?:Record<string,string>};
 
 const categories = new Set(["transport","tools","garden","leisure","party","kitchen","bike"]);
 function error(message:string, status=400) { return NextResponse.json({error:message},{status}); }
@@ -73,13 +77,14 @@ export async function POST(request:Request) {
     const data:Record<string,JsonValue> = {
       ownerUid:identity.localId, owner:profile.name.split(/\s+/)[0],
       name, description, category:listing!.category!, country, city:String(place.city), place,
-      dailyPrice:listing!.dailyPrice!, deposit, photos:photos as unknown as JsonValue[], active:true,
+      dailyPrice:listing!.dailyPrice!, deposit, details:cleanDetails(listing!.category!,listing?.details ?? (existing?.fields?.details ? decode(existing.fields.details) : {})), photos:photos as unknown as JsonValue[], active:true,
     };
     const fields = Object.fromEntries(Object.entries(data).map(([key,value])=>[key,encode(value)]));
     fields.updatedAt = {timestampValue:now};
     fields.createdAt = existing?.fields?.createdAt ?? {timestampValue:now};
     const response = await fetch(firestoreDocumentUrl(`listings/${id}`), {method:"PATCH",headers:{authorization:`Bearer ${await serviceToken()}`,"content-type":"application/json"},body:JSON.stringify({fields})});
     if (!response.ok) throw new Error("Annoncen kunne ikke gemmes i Firebase.");
+    if(!existing) after(()=>notifyListingMatches(id,identity.localId,{name,description,country,category:listing!.category!,dailyPrice:listing!.dailyPrice!,place:place as unknown as Place,city:String(place.city)}));
     return NextResponse.json({ok:true,id});
   } catch (cause) {
     const message = cause instanceof Error ? cause.message : "Annoncen kunne ikke gemmes.";

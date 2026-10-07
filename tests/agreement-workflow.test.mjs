@@ -157,6 +157,7 @@ function encode(v) {
   return {mapValue:{fields:Object.fromEntries(Object.entries(v).filter(([,v])=>v!==undefined).map(([k,v])=>[k,encode(v)]))}};
 }
 function decode(v) {
+  if("nullValue" in v)return null;
   if(v.mapValue) return Object.fromEntries(Object.entries(v.mapValue.fields).map(([k,v])=>[k,decode(v)]));
   if(v.arrayValue) return v.arrayValue.values.map(decode);
   return v.stringValue ?? v.timestampValue ?? v.booleanValue ?? v.doubleValue ?? Number(v.integerValue);
@@ -167,10 +168,11 @@ function setup() {
   const value=path=>decode({mapValue:{fields:docs.get(path).fields}});
   const commit=async writes=>{
     for(const w of writes) {
-      const old=docs.get(w.update.name), p=w.currentDocument;
+      const old=docs.get(w.update?.name??w.verify), p=w.currentDocument;
       if(p?.exists===false && old || p?.updateTime && old?.updateTime!==p.updateTime) throw new Error("IDENTITY_CONFLICT");
     }
     for(const w of writes) {
+      if(w.verify)continue;
       const old=docs.get(w.update.name);
       docs.set(w.update.name,{name:w.update.name,fields:w.updateMask ? {...old.fields,...w.update.fields} : w.update.fields,updateTime:`version-${++version}`});
     }
@@ -206,8 +208,20 @@ function setup() {
     return docs.has(path) ? Response.json(structuredClone(docs.get(path))) : Response.json({},{status:404});
   };
   const pushes=[];
-  const dependencies={"@/lib/push-server":{sendCirclePush:async(...args)=>pushes.push(args)},"next/server":{after:fn=>fn(),NextResponse:{json:(data,options)=>Response.json(data,options)}},"@/lib/firebase-server":server,"@/lib/server-config":{serverConfig:()=>"test"},"@/lib/agreement-workflow":policy,"@/lib/marketplace":market,"@/lib/agreement-photos":photoPolicy};
+  const dependencies={"@/lib/search-alerts":{notifyListingMatches:async()=>{}},"@/lib/push-server":{sendCirclePush:async(...args)=>pushes.push(args)},"next/server":{after:fn=>fn(),NextResponse:{json:(data,options)=>Response.json(data,options)}},"@/lib/firebase-server":server,"@/lib/server-config":{serverConfig:()=>"test"},"@/lib/agreement-workflow":policy,"@/lib/marketplace":market,"@/lib/agreement-photos":photoPolicy};
+  const calendarPolicy=load("../lib/listing-calendar.ts",{"./marketplace":market});
+  dependencies["@/lib/listing-calendar"]=calendarPolicy;
+  const calendarServer=load("../lib/listing-calendar-server.ts",dependencies);
+  dependencies["@/lib/listing-calendar-server"]=calendarServer;
+  dependencies["@/lib/agreement-schedule"]=load("../lib/agreement-schedule.ts");
+  dependencies["@/lib/firestore-values"]=load("../lib/firestore-values.ts");
+  dependencies["@/lib/community-server"]=load("../lib/community-server.ts",dependencies);
+  dependencies["@/lib/discovery"]=load("../lib/discovery.ts",{"./marketplace":market});
+  const communityApis=Object.fromEntries(["reviews","preferences","wanted","agreement-changes"].map(name=>[name,load(`../app/api/${name}/route.ts`,dependencies)]));
+  const communityCall=(api,method,uid,body,query="")=>communityApis[api][method](new Request("https://circle.test/api/"+api+query,{method,headers:{...(uid?{authorization:uid}:{}),"content-type":"application/json"},...(body?{body:JSON.stringify(body)}:{})}));
+  const calendarApi=load("../app/api/availability/route.ts",dependencies);
   const api=load("../app/api/agreements/route.ts",dependencies);
+  dependencies["@/lib/listing-details"]=load("../lib/listing-details.ts");
   const listingApi=load("../app/api/listings/route.ts",dependencies);
   const images=new Map();
   const photoApi=load("../app/api/agreements/photos/route.ts",{...dependencies,"@/lib/agreement-photo-storage":{
@@ -220,7 +234,9 @@ function setup() {
   const call=(method,uid,body,query="")=>api[method](new Request("https://circle.test/api/agreements"+query,{method,headers:{authorization:uid,"content-type":"application/json"},...(body ? {body:JSON.stringify(body)} : {})}));
   const photoCall=(method,uid,phase="handover",photoId,bytes,extra={})=>photoApi[method](new Request(`https://circle.test/api/agreements/photos?${new URLSearchParams({id:base.id,phase,...(photoId ? {photoId} : {})})}`,{method,headers:{authorization:uid,...(bytes ? {"content-type":"image/jpeg"} : {}),...extra},...(bytes ? {body:bytes} : {})}));
   const listingCall=(uid,listing)=>listingApi.POST(new Request("https://circle.test/api/listings",{method:"POST",headers:{authorization:uid,"content-type":"application/json"},body:JSON.stringify({listing})}));
-  return {docs,put,value,call,photoCall,images,listingCall,pushes};
+  const calendarCall=(uid,body)=>calendarApi.POST(new Request("https://circle.test/api/availability",{method:"POST",headers:{authorization:uid,"content-type":"application/json"},body:JSON.stringify(body)}));
+  const publicCalendar=(ids)=>calendarApi.GET(new Request("https://circle.test/api/availability?ids="+ids));
+  return {communityCall,docs,put,value,call,photoCall,images,listingCall,pushes,calendarCall,publicCalendar};
 }
 test("only listing owner sets deposit; old clients preserve it and invalid amounts fail",async()=>{
   const s=setup();
@@ -370,4 +386,120 @@ test("push goes only to the counterpart after saved requests/messages, retries d
   await s.call("PATCH","borrower",body);assert.equal(s.pushes.length,2);
   assert.equal((await s.call("PATCH","stranger",{...body,messageId:"other-message"})).status,403);
   assert.equal(s.pushes.length,2);
+});
+
+test("public calendar exposes only dates and private blocks prevent requests and approval",async()=>{
+  const s=setup();const today=policy.circleToday();
+  const body={id:base.item.id,action:"add",from:today,to:today};
+  assert.equal((await s.calendarCall("stranger",body)).status,403);
+  assert.equal((await s.calendarCall("owner",body)).status,200);
+  const publicData=await (await s.publicCalendar(base.item.id)).json();
+  assert.deepEqual(publicData,{periods:{[base.item.id]:[{from:today,to:today}]}});
+  assert.equal((await s.call("POST","borrower",{agreement:{...base,from:today,to:today}})).status,409);
+  s.put("agreements/"+base.id,{...base,from:today,to:today,requestStatus:"requested"});
+  assert.equal((await s.call("PATCH","owner",{id:base.id,action:"accept"})).status,409);
+  const block=s.value("listingCalendars/"+base.item.id).blocks[0];
+  assert.equal((await s.calendarCall("borrower",{id:base.item.id,action:"remove",blockId:block.id})).status,403);
+  assert.equal((await s.calendarCall("owner",{id:base.item.id,action:"remove",blockId:block.id})).status,200);
+  assert.equal((await s.call("PATCH","owner",{id:base.id,action:"accept"})).status,200);
+  assert.equal((await s.calendarCall("owner",body)).status,409);
+});
+test("owner block and booking approval cannot both win a concurrent race",async()=>{
+  const s=setup();const today=policy.circleToday();s.put("agreements/"+base.id,{...base,from:today,to:today,requestStatus:"requested"});
+  const results=await Promise.all([s.call("PATCH","owner",{id:base.id,action:"accept"}),s.calendarCall("owner",{id:base.item.id,action:"add",from:today,to:today})]);
+  assert.deepEqual(results.map(r=>r.status).sort(),[200,409]);
+});
+
+test("reviews require completed loan, actual participant and one review per party",async()=>{
+  const s=setup(),send=(uid,body={})=>s.communityCall("reviews","POST",uid,{id:base.id,stars:4,text:"God oplevelse",...body});
+  s.put("agreements/"+base.id,{...base,requestStatus:"accepted"});
+  assert.equal((await send("anonymous")).status,401);
+  assert.equal((await send("stranger")).status,403);
+  assert.equal((await send("borrower")).status,409);
+  s.put("agreements/"+base.id,{...base,returnedAt:new Date().toISOString(),borrowerSignature:{},lenderSignature:{},borrowerReturnSignature:{},lenderReturnSignature:{}});
+  assert.equal((await send("borrower",{stars:6})).status,400);
+  assert.equal((await send("borrower",{subjectUid:"stranger",author:"Fake"})).status,200);
+  assert.equal((await send("borrower")).status,409);
+  assert.equal((await send("owner")).status,200);
+  const record=s.value(`reviews/${base.id}_borrower`);assert.equal(record.subjectUid,"owner");assert.equal(record.author,"Real");
+  const publicData=await (await s.communityCall("reviews","GET",null,null,"?listingId="+base.item.id)).json();
+  assert.equal(publicData.count,1);assert.equal(publicData.average,4);
+  assert.equal(publicData.reviews[0].authorUid,undefined);assert.equal(publicData.reviews[0].agreementId,undefined);
+  const own=await (await s.communityCall("reviews","GET","owner",null,"?agreementId="+base.id)).json();assert.equal(own.reviews.length,2);assert.equal(own.reviewed,true);
+  assert.equal((await s.communityCall("reviews","GET","stranger",null,"?agreementId="+base.id)).status,403);
+});
+test("preferences are scoped to authentication and preserve concurrent edits",async()=>{
+  const s=setup(),send=(uid,body)=>s.communityCall("preferences","POST",uid,body);
+  assert.equal((await s.communityCall("preferences","GET","anonymous")).status,401);
+  assert.equal((await send("borrower",{action:"favorite",id:base.item.id,enabled:true,uid:"owner"})).status,200);
+  assert.deepEqual(s.value("circlePreferences/borrower").favorites,[base.item.id]);assert.equal(s.docs.has("circlePreferences/owner"),false);
+  const filter={query:"trailer",country:"DK",category:"transport",price:"paid",radius:"all",placeId:""};
+  const outcomes=await Promise.all([1,2].map(()=>send("borrower",{action:"saveSearch",filter,alerts:true})));
+  assert.deepEqual(outcomes.map(r=>r.status).sort(),[200,409]);assert.equal(s.value("circlePreferences/borrower").searches.length,1);
+  assert.equal((await send("borrower",{action:"saveSearch",filter:{...filter,radius:"100",placeId:"invalid"}})).status,409);
+  assert.equal((await send("borrower",{action:"favorite",id:base.item.id,enabled:false})).status,200);
+  assert.deepEqual(s.value("circlePreferences/borrower").favorites,[]);
+});
+test("category fields are allowlisted and saved with the listing",async()=>{
+  const s=setup();assert.equal((await s.listingCall("owner",{...base.item,description:"Trailer",place:{id:"1",country:"DK",city:"Jystrup",postcode:"4174"},photos:[],details:{payload:" 750 kg ",connection:"7-polet",secret:"drop",model:"wrong category"}})).status,200);
+  assert.deepEqual(s.value("listings/"+base.item.id).details,{payload:"750 kg",connection:"7-polet"});
+});
+function scheduledBase(){const from=policy.circleToday();const to=new Date(Date.parse(from)+2*86400000).toISOString().slice(0,10);return {...base,from,to,days:3,total:15000,requestStatus:"accepted",pickupTime:"10:00",returnTime:"17:00"};}
+function later(date,days){return new Date(Date.parse(date)+days*86400000).toISOString().slice(0,10);}
+test("pickup and return times are validated, persisted and covered by idempotency",async()=>{
+  const s=setup(),a=scheduledBase();a.to=a.from;
+  assert.equal((await s.call("POST","borrower",{agreement:{...a,pickupTime:"18:00",returnTime:"17:00"}})).status,400);
+  assert.equal((await s.call("POST","borrower",{agreement:{...a,pickupTime:"25:00"}})).status,400);
+  assert.equal((await s.call("POST","borrower",{agreement:a})).status,200);assert.equal(s.value("agreements/"+a.id).pickupTime,"10:00");
+  assert.equal((await s.call("POST","borrower",{agreement:{...a,pickupTime:"11:00"}})).status,409);
+});
+test("extension requires other party approval, server price, and preserves original signed terms",async()=>{
+  const s=setup(),a=scheduledBase();a.borrowerSignature={dataUrl:"original"};a.lenderSignature={dataUrl:"original"};s.put("agreements/"+a.id,a);
+  const act=(uid,body)=>s.communityCall("agreement-changes","POST",uid,{id:a.id,...body});
+  assert.equal((await act("stranger",{action:"propose",to:later(a.to,2),returnTime:"18:00"})).status,403);
+  assert.equal((await act("borrower",{action:"propose",to:later(a.to,2),returnTime:"18:00",total:1,acceptedBy:"owner"})).status,200);
+  const proposal=s.value("agreements/"+a.id).changeProposal;assert.equal(proposal.total,25000);assert.equal(proposal.acceptedBy,undefined);
+  assert.equal((await act("borrower",{action:"accept",proposalId:proposal.id})).status,409);
+  assert.equal((await act("owner",{action:"accept",proposalId:"wrong"})).status,409);
+  assert.equal((await act("owner",{action:"accept",proposalId:proposal.id})).status,200);
+  const saved=s.value("agreements/"+a.id);assert.equal(saved.originalTo,a.to);assert.equal(saved.originalTotal,15000);assert.equal(saved.to,proposal.to);assert.equal(saved.total,25000);assert.equal(saved.deposit,a.deposit);assert.equal(saved.changeProposal,null);assert.equal(saved.extensions[0].acceptedBy,"owner");assert.deepEqual(saved.borrowerSignature,a.borrowerSignature);
+  assert.equal((await act("owner",{action:"accept",proposalId:proposal.id})).status,409);
+});
+test("extension conflicts with calendar blocks and racing accepted bookings",async()=>{
+  const s=setup(),a=scheduledBase();s.put("agreements/"+a.id,a);
+  const to=later(a.to,2),act=(uid,body)=>s.communityCall("agreement-changes","POST",uid,{id:a.id,...body});
+  await act("borrower",{action:"propose",to,returnTime:"17:00"});const proposal=s.value("agreements/"+a.id).changeProposal;
+  assert.equal((await s.calendarCall("owner",{id:base.item.id,action:"add",from:to,to})).status,200);
+  assert.equal((await act("owner",{action:"accept",proposalId:proposal.id})).status,409);
+  const blocks=s.value("listingCalendars/"+base.item.id).blocks;const block=Object.values(blocks)[0];
+  assert.equal((await s.calendarCall("owner",{id:base.item.id,action:"remove",blockId:block.id})).status,200);
+  const other={...a,id:"VC-2099-OTHER123456",from:to,to,requestStatus:"requested"};s.put("agreements/"+other.id,other);
+  const results=await Promise.all([act("owner",{action:"accept",proposalId:proposal.id}),s.call("PATCH","owner",{id:other.id,action:"accept"})]);
+  assert.deepEqual(results.map(r=>r.status).sort(),[200,409]);
+});
+test("signatures from stale displayed terms cannot sign a newly extended agreement",async()=>{
+  const s=setup(),a=scheduledBase();s.put("agreements/"+a.id,{...a,extensions:[{id:"accepted-extension"}]});
+  const sign={id:a.id,action:"signature",role:"borrower",seenNote:"",seenPhotoIds:[],signature:{dataUrl:"data:image/png;base64,AAA",signedAt:new Date().toISOString()}};
+  assert.equal((await s.call("PATCH","borrower",sign)).status,409);
+  assert.equal((await s.call("PATCH","borrower",{...sign,seenTo:later(a.to,1)})).status,409);
+  assert.equal((await s.call("PATCH","borrower",{...sign,seenTo:a.to})).status,200);
+});
+test("wanted posts expose postal area only, enforce ownership and link genuine owner listings",async()=>{
+  const s=setup(),a=scheduledBase(),create={action:"create",title:"En trailer",description:"Til weekenden",from:a.from,to:a.to,ownerUid:"owner",author:"Fake"};
+  assert.equal((await s.communityCall("wanted","POST","anonymous",create)).status,401);
+  assert.equal((await s.communityCall("wanted","POST","borrower",create)).status,200);
+  const id=[...s.docs.keys()].find(k=>k.startsWith("wanted/")).split("/")[1];const data=s.value("wanted/"+id);assert.equal(data.ownerUid,"borrower");assert.equal(data.author,"Real");
+  assert.equal((await s.communityCall("wanted","POST","stranger",{action:"offer",id,listingId:base.item.id})).status,403);
+  assert.equal((await s.communityCall("wanted","POST","owner",{action:"offer",id,listingId:base.item.id})).status,200);
+  const pub=await (await s.communityCall("wanted","GET",null)).json();assert.equal(pub.items[0].ownerUid,undefined);assert.equal(pub.items[0].street,undefined);assert.deepEqual(pub.items[0].offers,[]);
+  const mine=await (await s.communityCall("wanted","GET","borrower")).json();assert.equal(mine.items[0].offers.length,1);
+  assert.equal((await s.communityCall("wanted","POST","owner",{action:"close",id})).status,403);
+  assert.equal((await s.communityCall("wanted","POST","borrower",{action:"close",id})).status,200);
+  assert.equal((await (await s.communityCall("wanted","GET",null)).json()).items.length,0);
+});
+test("wanted post limit remains safe under concurrent creates",async()=>{
+  const s=setup(),a=scheduledBase(),create={action:"create",title:"En trailer",description:"Weekend",from:a.from,to:a.to};
+  for(let i=0;i<4;i++)assert.equal((await s.communityCall("wanted","POST","borrower",create)).status,200);
+  const results=await Promise.all([1,2].map(()=>s.communityCall("wanted","POST","borrower",create)));
+  assert.deepEqual(results.map(r=>r.status).sort(),[200,409]);assert.equal([...s.docs.keys()].filter(k=>k.startsWith("wanted/")).length,5);
 });

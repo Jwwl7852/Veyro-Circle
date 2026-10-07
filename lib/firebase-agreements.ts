@@ -3,11 +3,12 @@
 import { auth } from "@/lib/firebase-client";
 import type { Country, Place, Profile } from "@/lib/marketplace";
 import type { Decision, WorkflowAgreement } from "@/lib/agreement-workflow";
+import type { AgreementSchedule } from "@/lib/agreement-schedule";
 import type { AgreementPhotos } from "@/lib/agreement-photos";
 
 export type StoredSignature = { dataUrl: string; signedAt: string; photoIds?:string[] };
 export type SignaturePhase = "handover" | "return";
-export type StoredAgreement = WorkflowAgreement & AgreementPhotos & {
+export type StoredAgreement = WorkflowAgreement & AgreementPhotos & AgreementSchedule & {
   id: string;
   borrowerUid: string;
   lenderUid?: string;
@@ -52,11 +53,10 @@ export async function loadCircleAgreements(uid: string): Promise<StoredAgreement
 export function agreementsChanged() { window.dispatchEvent(new Event("circle:agreements-changed")); }
 
 export async function loadBookedPeriods(listingId:string): Promise<Array<{from:string;to:string}>> {
-  if (!auth?.currentUser) throw new Error("Du skal være logget ind.");
-  const response = await fetch(`/api/agreements?listingId=${encodeURIComponent(listingId)}`,{cache:"no-store",headers:{authorization:`Bearer ${await auth.currentUser.getIdToken()}`}});
-  const data = await response.json() as {periods?:Array<{from:string;to:string}>;error?:string};
-  if (!response.ok) throw new Error(data.error || "Bookingerne kunne ikke hentes.");
-  return data.periods ?? [];
+  const {loadAvailability}=await import("./firebase-calendar");
+  const result=await loadAvailability([listingId]);
+  if(!result[listingId])throw Error("Annoncen findes ikke længere.");
+  return result[listingId]!;
 }
 
 export async function updateCircleAgreement(id:string, action:Decision|"read"|"message", extra:Record<string,unknown> = {}) {
@@ -67,9 +67,9 @@ export async function updateCircleAgreement(id:string, action:Decision|"read"|"m
   agreementsChanged();
 }
 
-export async function saveCircleSignature(id: string, role: "borrower" | "lender", signature: StoredSignature, phase: SignaturePhase = "handover", seenNote = "", seenPhotoIds:string[] = []) {
+export async function saveCircleSignature(id: string, role: "borrower" | "lender", signature: StoredSignature, phase: SignaturePhase = "handover", seenNote = "", seenPhotoIds:string[] = [], seenTo?:string) {
   if (!auth?.currentUser) throw new Error("Du skal være logget ind.");
-  const response = await fetch("/api/agreements",{method:"PATCH",headers:{"content-type":"application/json",authorization:`Bearer ${await auth.currentUser.getIdToken()}`},body:JSON.stringify({id,action:"signature",role,phase,signature,seenNote,seenPhotoIds})});
+  const response = await fetch("/api/agreements",{method:"PATCH",headers:{"content-type":"application/json",authorization:`Bearer ${await auth.currentUser.getIdToken()}`},body:JSON.stringify({id,action:"signature",role,phase,signature,seenNote,seenPhotoIds,seenTo})});
   const data = await response.json() as {error?:string;returnedAt?:string;returnCondition?:"good"|"remarks"};
   if (!response.ok) { agreementsChanged(); throw new Error(data.error || "Underskriften kunne ikke gemmes."); }
   agreementsChanged();

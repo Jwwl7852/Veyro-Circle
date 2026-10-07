@@ -128,7 +128,7 @@ test("agreement offers separate account storage and a standalone print document"
 test("map has dedicated desktop and mobile navigation and starts at own postcode", async () => {
   const page = await readFile(path.join(root, "app", "page.tsx"), "utf8");
   const map = await readFile(path.join(root, "components", "community-map.tsx"), "utf8");
-  assert.match(page, /useState\("100"\)/);
+  assert.match(page, /setRadius\("100"\)/);
   assert.match(page, /tab === "map" &&/);
   assert.match(page, /<SideNav icon=\{MapIcon\}/);
   assert.match(page, /<MobileNav icon=\{MapIcon\}/);

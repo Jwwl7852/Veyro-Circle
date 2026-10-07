@@ -1,3 +1,5 @@
+import {validTime} from "@/lib/agreement-schedule";
+import { blockedPeriods, unavailablePeriods } from "@/lib/listing-calendar-server";
 import { sendCirclePush } from "@/lib/push-server";
 import { NextResponse, after } from "next/server";
 import { commitFirestoreWrites, firestoreDocumentName, firestoreDocumentUrl, getFirestoreDocument, getServerProfile, serviceToken, verifyFirebaseRequest } from "@/lib/firebase-server";
@@ -75,19 +77,22 @@ export async function POST(request:Request) {
     if (!draft || !validId(draft.id) || draft.borrowerUid !== identity.localId) return error("Aftalen tilhører ikke den aktuelle bruger.",403);
     const item = draft.item as Record<string,JsonValue> | undefined;
     if (!validId(item?.id) || typeof draft.from !== "string" || typeof draft.to !== "string") return error("Vælg en annonce og gyldige datoer.");
+    const hasTimes=draft.pickupTime!==undefined || draft.returnTime!==undefined;
+    if(hasTimes && (!validTime(draft.pickupTime)||!validTime(draft.returnTime)||(draft.from===draft.to&&draft.returnTime<=draft.pickupTime))) return error("Vælg gyldige afhentnings- og returtider.");
     const days = dayCount(draft.from, draft.to);
     if (!days || days > 366 || draft.from < circleToday()) return error("Vælg gyldige datoer fra i dag og højst 366 dage.");
     if (typeof draft.deposit !== "number" || !Number.isSafeInteger(draft.deposit) || draft.deposit < 0 || draft.deposit > 10_000_000 || typeof draft.message !== "string" || draft.message.length > 2000) return error("Depositum eller besked er ugyldig.");
     const existing = await getFirestoreDocument(`agreements/${draft.id}`);
     if (existing) {
       const old = Object.fromEntries(Object.entries(existing.fields ?? {}).map(([key,value])=>[key,decode(value)]));
-      if (old.borrowerUid === identity.localId && (old.item as Record<string,JsonValue>)?.id === item.id && old.from === draft.from && old.to === draft.to && old.deposit === draft.deposit && old.message === draft.message.trim()) return NextResponse.json({ok:true,agreement:old},{headers:responseHeaders});
+      if (old.borrowerUid === identity.localId && (old.item as Record<string,JsonValue>)?.id === item.id && old.from === draft.from && old.to === draft.to && old.deposit === draft.deposit && old.message === draft.message.trim() && old.pickupTime===draft.pickupTime && old.returnTime===draft.returnTime) return NextResponse.json({ok:true,agreement:old},{headers:responseHeaders});
       return error("Aftalen er allerede gemt og kan ikke overskrives.",409);
     }
     const listing = await getFirestoreDocument(`listings/${item.id}`);
     const ownerUid = listing?.fields?.ownerUid?.stringValue;
     if (!ownerUid || listing?.fields?.active?.booleanValue === false) return error("Annoncen findes ikke længere.",404);
     if (ownerUid === identity.localId) return error("Du kan ikke låne din egen ting.");
+    if ((await unavailablePeriods(item.id)).some(period=>overlaps(period,{from:draft.from as string,to:draft.to as string}))) return error("Tingen er allerede booket eller blokeret i perioden. Vælg andre datoer.",409);
     const [borrower, lender] = await Promise.all([getServerProfile(identity.localId),getServerProfile(ownerUid)]);
     if ([borrower,lender].some(p=>!p.name || !p.phone || !p.street || !p.place.id)) return error("Begge profiler skal være udfyldt før en forespørgsel.");
     const listingData = Object.fromEntries(Object.entries(listing?.fields ?? {}).map(([key,value])=>[key,decode(value)]));
@@ -102,7 +107,7 @@ export async function POST(request:Request) {
       borrower:{name:borrower.name,email:borrower.email,phone:borrower.phone,street:borrower.street,place:borrower.place},
       lender:{name:lender.name,phone:lender.phone,street:lender.street,place:lender.place},
       item:{id:item.id,name:listingData.name,category:listingData.category,country:listingData.country,dailyPrice:price},
-      from:draft.from,to:draft.to,days,total:price*days,deposit,message:draft.message.trim(),
+      from:draft.from,to:draft.to,...(hasTimes?{pickupTime:draft.pickupTime,returnTime:draft.returnTime}:{}),days,total:price*days,deposit,message:draft.message.trim(),
       handoverNote:"",returnNote:"",requestStatus:"requested",
     };
     const now = new Date(); const retention = new Date(now); retention.setMonth(retention.getMonth()+12);
@@ -119,7 +124,7 @@ export async function POST(request:Request) {
 export async function PATCH(request:Request) {
   try {
     const identity = await verifyFirebaseRequest(request);
-    const body = await request.json() as {id?:string;action?:"signature"|"note"|Decision|"read"|"message";role?:"borrower"|"lender";phase?:"handover"|"return";signature?:JsonValue;note?:string;seenNote?:string;seenPhotoIds?:string[];noticeIds?:string[];text?:string;messageId?:string};
+    const body = await request.json() as {id?:string;action?:"signature"|"note"|Decision|"read"|"message";role?:"borrower"|"lender";phase?:"handover"|"return";signature?:JsonValue;note?:string;seenNote?:string;seenTo?:string;seenPhotoIds?:string[];noticeIds?:string[];text?:string;messageId?:string};
     if (!validId(body.id) || !["handover","return"].includes(body.phase ?? "handover")) return error("Aftaleopdateringen er ugyldig.");
     const documentResponse = await fetch(firestoreDocumentUrl(`agreements/${body.id}`), {cache:"no-store",headers:{authorization:`Bearer ${await serviceToken()}`}});
     if (!documentResponse.ok) return error("Aftalen findes ikke.",404);
@@ -168,6 +173,7 @@ export async function PATCH(request:Request) {
         // Read the per-item version BEFORE the overlap query. Concurrent approvals
         // cannot both commit even when their queries initially see no reservation.
         const lock = await getFirestoreDocument(`bookingLocks/${itemId}`);
+        if ((await blockedPeriods(itemId)).some(period=>overlaps(period,workflow(data)))) return error("Tingen er blokeret af ejeren i denne periode.",409);
         const bookings = await queryAgreements("item.id","EQUAL",itemId);
         if (bookings.some(other=>other.id !== body.id && reservesDates(workflow(other)) && overlaps(workflow(data),workflow(other)))) return error("Tingen er allerede booket i en del af perioden. Vælg andre datoer.",409);
         writes.push({update:{name:firestoreDocumentName(`bookingLocks/${itemId}`),fields:{updatedAt:{timestampValue:now}}},currentDocument:lock ? {updateTime:lock.updateTime} : {exists:false}});
@@ -192,6 +198,7 @@ export async function PATCH(request:Request) {
       if (!response.ok) throw new Error("Noten kunne ikke gemmes.");
       return NextResponse.json({ok:true,note});
     }
+    if ((body.seenTo!==undefined || Array.isArray(data.extensions)&&data.extensions.length>0) && body.seenTo!==data.to) return error("Aftalen er forlænget. Åbn den igen og læs de nye vilkår før underskrift.",409);
     if (!body.signature || !["borrower","lender"].includes(body.role ?? "")) return error("Underskriften er ugyldig.");
     if (!data.borrowerUid || !data.lenderUid || data.borrowerUid === data.lenderUid) return error("Aftalen skal være knyttet til to forskellige konti. Opret en ny forespørgsel på den rigtige annonce.",409);
     const currentNote = String(data[phase === "return" ? "returnNote" : "handoverNote"] ?? "");
