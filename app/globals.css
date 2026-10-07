@@ -2,6 +2,26 @@
 @import "tw-animate-css";
 @import "../vendor/shadcn-tailwind-4.13.0.css";
 
+.notification-bell { position:relative; }
+.notification-bell b { position:absolute; top:-5px; right:-5px; padding:2px 5px; min-width:20px; border-radius:12px; background:#C84343; color:white; font-size:11px; }
+.notification-dialog { max-height:85dvh; overflow-y:auto; }
+.notification-list { display:grid; gap:10px; }
+.notification-entry { display:grid; gap:6px; padding:14px; text-align:left; border:1px solid #D6E1E6; border-radius:8px; min-height:44px; overflow-wrap:anywhere; }
+.notification-entry.unread { border-left:4px solid #008EAC; background:#F2F6F8; }
+.notification-entry small { color:#607583; }
+.loans-heading { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:20px; }
+.loan-filters { display:flex; flex-wrap:wrap; gap:8px; margin:14px 0; }
+.loan-filters button { min-height:44px; padding:8px 14px; border:1px solid #D6E1E6; border-radius:7px; background:white; }
+.loan-filters button[aria-pressed="true"] { background:#008EAC; border-color:#008EAC; color:white; }
+.loan-filters b { margin-left:6px; }
+.loan-actions { display:flex; gap:8px; flex-wrap:wrap; margin:12px 0; }
+.loan-actions button { min-height:44px; height:auto; white-space:normal; }
+.loan-message { overflow-wrap:anywhere; white-space:pre-wrap; }
+.loan-overdue { color:#895000; background:#fff8e7; padding:10px; border-radius:6px; }
+.agreement-lifecycle-status { font-weight:700; padding:8px 0; }
+.loan-filters button:focus-visible,.notification-entry:focus-visible { outline:3px solid #008EAC; outline-offset:3px; }
+@media(max-width:480px) { .loan-actions button { flex:1 1 140px; } .loans-panel .agreement-open { flex-wrap:wrap; text-align:left; } }
+
 :root {
   --veyro-dark:#031725; --veyro-navy:#082B3B; --veyro-cyan:#16C8D5; --veyro-teal:#008EAC; --veyro-light-cyan:#69E4EB;
   --veyro-white:#F8FBFC; --veyro-surface:#F2F6F8; --veyro-text:#172936; --veyro-muted:#607583; --veyro-border:#D6E1E6;

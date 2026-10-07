@@ -14,6 +14,7 @@ const vite = await createServer({
   configFile: false,
   root,
   resolve: { alias: { "@": root } },
+  plugins:[{name:"test-only-loan-export",transform(code,id){if(id === path.join(root,"app/page.tsx")) return code + "\nexport { RequestsView };";}}],
   server: { middlewareMode: true },
 });
 
@@ -131,4 +132,26 @@ test("renders sidebar skeletons deterministically", async () => {
 
   assert.equal(first, second);
   assert.match(first, /--skeleton-width:70%/);
+});
+
+test("loan overview renders owner actions, borrower next steps and translated archive",async()=>{
+  const {RequestsView}=await vite.ssrLoadModule("/app/page.tsx");
+  const loan={id:"VC-2099-TEST123456",borrowerUid:"borrower",lenderUid:"owner",from:"2099-04-10",to:"2099-04-12",days:3,total:0,message:"",requestStatus:"requested",borrower:{name:"Borrower"},item:{name:"Trailer",owner:"Owner",country:"DK",icon:"span"}};
+  const props={t:{requests:"Mine lån",free:"Gratis",chat:"Skriv besked"},loans:[loan],lang:"da",userUid:"owner",direction:"lender",archive:false,setDirection(){},setArchive(){},onChat(){},onAgreement(){},onDecision(){},loading:false,loadError:false};
+  const owner=renderToStaticMarkup(React.createElement(RequestsView,props));
+  assert.match(owner,/Godkend forespørgsel/);assert.match(owner,/Afvis/);assert.match(owner,/VC-2099-TEST123456/);assert.match(owner,/Trailer/);
+  const borrower=renderToStaticMarkup(React.createElement(RequestsView,{...props,userUid:"borrower",direction:"borrower"}));
+  assert.doesNotMatch(borrower,/Godkend forespørgsel/);assert.match(borrower,/Afventer ejerens svar/);
+  const accepted=renderToStaticMarkup(React.createElement(RequestsView,{...props,userUid:"borrower",direction:"borrower",loans:[{...loan,requestStatus:"accepted"}]}));
+  assert.match(accepted,/Underskriv ved udlevering/);
+  const archive=renderToStaticMarkup(React.createElement(RequestsView,{...props,lang:"sv",archive:true,loans:[{...loan,requestStatus:"declined"}]}));
+  assert.match(archive,/Avböjd/);assert.match(archive,/Visa sparat avtal/);assert.doesNotMatch(archive,/Godkänn förfrågan/);
+});
+
+test("new loan and notification controls have mobile sizing and focus styling",async()=>{
+  const css=await readFile(path.join(root,"app/globals.css"),"utf8");
+  assert.match(css,/\.loan-actions button\s*\{[^}]*min-height:44px/);
+  assert.match(css,/\.loan-filters button\s*\{[^}]*min-height:44px/);
+  assert.match(css,/\.notification-entry[^}]*overflow-wrap:anywhere/);
+  assert.match(css,/\.loan-filters button:focus-visible/);
 });
