@@ -791,7 +791,7 @@ export default function HomePage() {
         <MobileNav icon={Search} label={lang === "da" ? "Gemte søgninger" : "Sparade sökningar"} active={tab === "saved"} onClick={() => navigate("saved")} />
         <MobileNav icon={Search} label={lang === "da" ? "Efterlysning" : "Efterlysning"} active={tab === "wanted"} onClick={() => navigate("wanted")} />
         <MobileNav icon={ImagePlus} label={t.navItems} active={tab === "items"} onClick={() => navigate("items")} />
-        <button className="add-mobile" onClick={openAdd} aria-label={t.addItem}><PackagePlus size={25} /></button>
+        <MobileNav icon={PackagePlus} label={t.addItem} onClick={openAdd} />
         <MobileNav icon={CalendarDays} label={t.navRequests} active={tab === "requests"} badge={requestSent} onClick={() => navigate("requests")} />
         <MobileNav icon={CircleUserRound} label={t.navProfile} active={tab === "profile"} onClick={() => navigate("profile")} />
       </nav>
