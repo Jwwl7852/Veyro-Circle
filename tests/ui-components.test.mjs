@@ -128,11 +128,11 @@ test("agreement offers separate account storage and a standalone print document"
 test("map has dedicated desktop and mobile navigation and starts at own postcode", async () => {
   const page = await readFile(path.join(root, "app", "page.tsx"), "utf8");
   const map = await readFile(path.join(root, "components", "community-map.tsx"), "utf8");
-  assert.match(page, /setRadius\("100"\)/);
+  assert.ok(page.includes("setRadius(String(defaultSearchRadius(cloud.defaultRadiusKm)))"));
   assert.match(page, /tab === "map" &&/);
   assert.match(page, /<SideNav icon=\{MapIcon\}/);
   assert.match(page, /<MobileNav icon=\{MapIcon\}/);
-  assert.match(page, /<CommunityMap origin=\{profile.place\} radiusKm=\{100\}/);
+  assert.ok(page.includes("<CommunityMap origin={profile.place} radiusKm={defaultSearchRadius(profile.defaultRadiusKm)}"));
   assert.doesNotMatch(page.slice(page.indexOf('{tab === "home" &&'),page.indexOf('{tab === "map" &&')), /<CommunityMap/);
   assert.match(map, /tile\.openstreetmap\.org/);
   assert.match(map, /bindMapWheel/);

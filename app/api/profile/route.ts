@@ -4,7 +4,7 @@ import { commitFirestoreWrites, firestoreDocumentName, getFirestoreDocument, ver
 import { serverConfig } from "@/lib/server-config";
 
 type Payload = {
-  name?:string; email?:string; phone?:string; street?:string;
+  defaultRadiusKm?:number; name?:string; email?:string; phone?:string; street?:string;
   place?:{id?:string; country?:string; postcode?:string; city?:string; lat?:number; lon?:number};
   taxAcknowledgement?:{version?:string; country?:string; acceptedAt?:string}; preferredLanguage?:string;
 };
@@ -34,6 +34,7 @@ export async function POST(request: Request) {
   try {
     const identity = await verifyFirebaseRequest(request);
     const body = await request.json() as Payload;
+    if (body.defaultRadiusKm !== undefined && ![2,5,10,20,50,100].includes(body.defaultRadiusKm)) return error("INVALID_SEARCH_RADIUS");
     const name = body.name?.trim() ?? ""; const email = body.email?.trim().toLowerCase() ?? "";
     const phone = body.phone?.trim() ?? ""; const street = body.street?.trim() ?? ""; const place = body.place;
     const language = body.preferredLanguage === "sv" ? "sv" : "da";
@@ -62,6 +63,7 @@ export async function POST(request: Request) {
     };
     reserve(phonePath, phoneDoc); reserve(compositePath, compositeDoc);
     const userFields:Record<string,FirestoreField> = {
+      ...(body.defaultRadiusKm !== undefined ? {defaultRadiusKm:{doubleValue:body.defaultRadiusKm}} : {}),
       uid:text(identity.localId), name:text(name), email:text(email), phone:text(phone), street:text(street),
       place:map({id:text(place.id),country:text(place.country!),postcode:text(place.postcode),city:text(place.city),lat:{doubleValue:Number(place.lat ?? 0)},lon:{doubleValue:Number(place.lon ?? 0)}}),
       preferredLanguage:text(language), verificationStatus:text("verified"), identityPhoneKey:text(phoneKey), identityCompositeKey:text(compositeKey), updatedAt:timestamp(now),

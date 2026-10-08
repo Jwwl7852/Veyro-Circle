@@ -3,7 +3,7 @@
 import { doc, getDoc } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import { db } from "@/lib/firebase-client";
-import type { Lang, ListingPlan, Profile } from "@/lib/marketplace";
+import { defaultSearchRadius, type Lang, type ListingPlan, type Profile } from "@/lib/marketplace";
 
 export type CircleCloudProfile = Profile & {
   uid: string;
@@ -20,6 +20,7 @@ export async function loadCircleProfile(uid: string): Promise<CircleCloudProfile
   if (!data.place || !data.name || !data.street || !data.email) return null;
   return {
     uid,
+    defaultRadiusKm: defaultSearchRadius(data.defaultRadiusKm),
     name: data.name,
     email: data.email,
     phone: typeof data.phone === "string" ? data.phone : "",

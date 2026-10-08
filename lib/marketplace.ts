@@ -13,7 +13,9 @@ export function canCreateListing(activeListings: number, plan: ListingPlan) {
   return activeListings < listingLimit(plan);
 }
 export type Place = { id: string; country: Country; postcode: string; city: string; lat: number; lon: number };
-export type Profile = { name: string; email: string; phone: string; street: string; place: Place; taxAcknowledgement?: TaxAcknowledgement };
+export const SEARCH_RADII = [2, 5, 10, 20, 50, 100] as const;
+export function defaultSearchRadius(value: unknown): number { return typeof value === "number" && SEARCH_RADII.some(r => r === value) ? value : 10; }
+export type Profile = { defaultRadiusKm?: number; name: string; email: string; phone: string; street: string; place: Place; taxAcknowledgement?: TaxAcknowledgement };
 export const places: Place[] = postalRecords.map((row, index) => ({
   id: String(index), country: row[0] as Country, postcode: String(row[1]),
   city: String(row[2]), lat: Number(row[3]), lon: Number(row[4]),

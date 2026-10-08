@@ -137,7 +137,7 @@ function CommunityMapCanvas({origin,radiusKm,lang,points,loading,loadError}:Comm
   }
 
   function pointerDown(event:React.PointerEvent<HTMLDivElement>) {
-    if ((event.target as HTMLElement).closest("button,a")) return;
+    if (!event.isPrimary || (event.target as HTMLElement).closest("button,a")) return;
     const center = toWorld(view.lat,view.lon,view.zoom);
     dragRef.current={pointerId:event.pointerId,x:event.clientX,y:event.clientY,centerX:center.x,centerY:center.y,moved:false};
     event.currentTarget.setPointerCapture(event.pointerId);
