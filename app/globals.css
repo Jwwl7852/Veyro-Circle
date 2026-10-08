@@ -716,3 +716,30 @@ button:focus-visible,a:focus-visible { outline:3px solid #819eb6; outline-offset
 
 .category-chip svg { width:clamp(12px,2cqw,18px); height:clamp(12px,2cqw,18px); flex-shrink:0; }
 @container (max-width:580px) { .category-chip svg { display:none; } }
+
+/* Compact desktop density; retain readable mobile inputs and touch targets. */
+@media (min-width:1024px) {
+  .app-header-inner { height:68px; }
+  .app-main-grid { gap:20px; padding-top:18px; grid-template-columns:200px minmax(0,1fr); }
+  .side-nav { min-height:40px; padding:9px 12px; gap:10px; font-size:14px; line-height:1.4; font-weight:500; }
+  .side-nav.active { font-weight:600; }
+  .side-nav>svg { width:18px; height:18px; }
+  .content-panel { padding:20px; min-height:360px; }
+  .my-items-head h2 { font-size:18px; }
+  .my-items-list { gap:8px; margin-top:12px; }
+  .my-item-row { padding:9px 12px; gap:12px; }
+  .my-item-row h3 { font-size:14px; }
+  .my-item-row button { min-height:36px; height:auto; padding:7px 10px; font-size:13px; }
+  .hero-card>div.relative { padding:20px 24px; }
+  .hero-card h1 { font-size:30px; }
+  .hero-card p { font-size:14px; line-height:1.5; }
+  .hero-card .mt-6 { margin-top:16px; }
+  .hero-card button { height:40px; font-size:14px; }
+  .listing-card h3 { font-size:14px; }
+  .listing-card-main>.p-4 { padding:12px; }
+  .specific-search input,.loan-search input { font-size:14px; }
+  .listing-view-toggle button { min-height:38px; font-size:14px; }
+}
+@media (min-width:1280px) {
+  .app-main-grid { grid-template-columns:200px minmax(0,1fr) 240px; }
+}
