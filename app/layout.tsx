@@ -1,6 +1,8 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { PwaRegister } from "@/components/pwa-register";
+
+export const viewport: Viewport = { width: "device-width", initialScale: 1, userScalable: true };
 
 export const metadata: Metadata = {
   title: "Veyro Circle — lån, lej og del lokalt",

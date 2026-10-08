@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { TaxGuidance } from "@/components/tax-guidance";
 import { hasReadTaxGuidance, TAX_GUIDANCE_VERSION } from "@/lib/tax-guidance";
-import { type Country, type Lang, type Place, type Profile, searchPlaces, validAddress, validProfile } from "@/lib/marketplace";
+import { SEARCH_RADII, defaultSearchRadius, type Country, type Lang, type Place, type Profile, searchPlaces, validAddress, validProfile } from "@/lib/marketplace";
 
 export function CountrySelect({ value, onChange, lang }: { value: Country | ""; onChange: (c: Country) => void; lang: Lang }) {
   return <Select value={value} onValueChange={v=>onChange(v as Country)}>
@@ -40,6 +40,7 @@ export function PlacePicker({ value, onChange, country, lang, label }: {
 
 export function ProfileForm({ profile, lang, onSave, authenticatedEmail }: { profile: Profile | null; lang: Lang; onSave: (p: Profile)=>void | Promise<void>; authenticatedEmail?: string }) {
   const da = lang === "da";
+  const [defaultRadiusKm, setDefaultRadiusKm] = useState(defaultSearchRadius(profile?.defaultRadiusKm));
   const [editing, setEditing] = useState(!profile);
   const [name, setName] = useState(profile?.name || "");
   const [email, setEmail] = useState(authenticatedEmail || profile?.email || "");
@@ -70,13 +71,13 @@ export function ProfileForm({ profile, lang, onSave, authenticatedEmail }: { pro
       setError(da ? "Læs skatteinformationen, og bekræft, at du har læst den." : "Läs skatteinformationen och bekräfta att du har läst den."); return;
     }
     setSaving(true);
-    try { await onSave({name: name.trim(), email: email.trim().toLowerCase(), phone: phone.trim(), street: street.trim(), place: place!, taxAcknowledgement: {version: TAX_GUIDANCE_VERSION, country, acceptedAt: new Date().toISOString()}}); setError(""); setEditing(false); }
+    try { await onSave({defaultRadiusKm, name: name.trim(), email: email.trim().toLowerCase(), phone: phone.trim(), street: street.trim(), place: place!, taxAcknowledgement: {version: TAX_GUIDANCE_VERSION, country, acceptedAt: new Date().toISOString()}}); setError(""); setEditing(false); }
     catch (cause) { setError(cause instanceof Error ? cause.message : (da ? "Oplysningerne kunne ikke gemmes." : "Uppgifterna kunde inte sparas.")); }
     finally { setSaving(false); }
   }}>
     {profile && !editing ? <>
       <div className="saved-profile-heading"><div><h2>{da ? "Konto og oplysninger" : "Konto och uppgifter"}</h2><p>{da ? "Dine oplysninger er gemt." : "Dina uppgifter är sparade."}</p></div><Button type="button" variant="outline" onClick={()=>setEditing(true)}>{da ? "Rediger oplysninger" : "Redigera uppgifter"}</Button></div>
-      <dl className="saved-profile-details"><div><dt>{da ? "Fulde navn" : "Fullständigt namn"}</dt><dd>{profile.name}</dd></div><div><dt>E-mail</dt><dd>{profile.email}</dd></div><div><dt>{da ? "Telefonnummer" : "Telefonnummer"}</dt><dd>{profile.phone}</dd></div><div><dt>{da ? "Adresse" : "Adress"}</dt><dd>{profile.street}<br />{profile.place.postcode} {profile.place.city}, {profile.place.country}</dd></div></dl>
+      <dl className="saved-profile-details"><div><dt>{da ? "Standardradius" : "Standardradie"}</dt><dd>{defaultSearchRadius(profile.defaultRadiusKm)} km</dd></div><div><dt>{da ? "Fulde navn" : "Fullständigt namn"}</dt><dd>{profile.name}</dd></div><div><dt>E-mail</dt><dd>{profile.email}</dd></div><div><dt>{da ? "Telefonnummer" : "Telefonnummer"}</dt><dd>{profile.phone}</dd></div><div><dt>{da ? "Adresse" : "Adress"}</dt><dd>{profile.street}<br />{profile.place.postcode} {profile.place.city}, {profile.place.country}</dd></div></dl>
     </> : <>
     <h2>{profile ? (da ? "Konto og oplysninger" : "Konto och uppgifter") : (da ? "Opret konto og profil" : "Skapa konto och profil")}</h2>
     <p>{da ? "Din e-mail er dit login, så du behøver ikke et separat brugernavn. Adresse, postnummer og by er obligatoriske." : "Din e-postadress är din inloggning, så du behöver inget separat användarnamn. Adress, postnummer och ort är obligatoriska."}</p>
@@ -87,6 +88,7 @@ export function ProfileForm({ profile, lang, onSave, authenticatedEmail }: { pro
     <label className="field-label">{da ? "Telefonnummer" : "Telefonnummer"} *<input type="tel" inputMode="tel" autoComplete="tel" required minLength={8} maxLength={24} value={phone} onChange={e=>setPhone(e.target.value)} placeholder={da ? "+45 12 34 56 78" : "+46 70 123 45 67"} /><small>{da ? "Telefonnummeret vises kun i en låne-/lejeaftale mellem parterne." : "Telefonnumret visas endast i ett låne-/hyresavtal mellan parterna."}</small></label>
     <div className="field-label">{da ? "Dit profilland · vælg ét land" : "Ditt profilland · välj ett land"} *<CountrySelect lang={lang} value={country} onChange={c=>{if(c !== country) {setCountry(c);setPlace(null);setTaxRead(false);}}} /><small>{da ? "Din profil hører til enten Danmark eller Sverige. Adresse og by skal ligge i det valgte land." : "Din profil tillhör antingen Danmark eller Sverige. Adressen och orten ska ligga i det valda landet."}</small></div>
     <label className="field-label">{da ? "Adresse · vej og husnummer" : "Adress · gata och husnummer"} *<input autoComplete="street-address" required minLength={4} maxLength={200} value={street} onChange={e=>setStreet(e.target.value)} placeholder={da ? "Vejnavn 12, 1. tv." : "Gatunamn 12, lgh 1001"} /></label>
+    <label className="field-label">{da ? "Standardradius fra dit hjem" : "Standardradie från ditt hem"}<select value={defaultRadiusKm} onChange={e=>setDefaultRadiusKm(Number(e.target.value))}>{SEARCH_RADII.map(k=><option key={k} value={k}>{k} km</option>)}</select><small>{da ? "Bruges til søgning og kort. Du kan ændre radius i den enkelte søgning." : "Används för sökning och karta. Du kan ändra radien för en enskild sökning."}</small></label>
     {country && <PlacePicker key={country} lang={lang} country={country} value={place} onChange={setPlace} label={da ? "Postnummer og by *" : "Postnummer och ort *"} />}
     </div>
     {addressIsValid && <div className="address-verified" role="status"><BadgeCheck size={20} /><span><b>{da ? "Adresseoplysninger kontrolleret" : "Adressuppgifter kontrollerade"}</b>{da ? `${place!.postcode} ${place!.city} findes i det danske/svenske adressegrundlag, og vej/adresse indeholder husnummer.` : `${place!.postcode} ${place!.city} finns i det danska/svenska adressunderlaget och gatuadressen innehåller husnummer.`}</span></div>}

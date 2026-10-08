@@ -84,3 +84,8 @@ test("listing plans require Plus and never allow more than 20 active things", ()
   assert.equal(m.canCreateListing(19, "plus"), true);
   assert.equal(m.canCreateListing(20, "plus"), false);
 });
+
+test("profile search radius accepts all six choices and defaults old profiles to 10 km",()=>{
+  for(const km of [2,5,10,20,50,100]) assert.equal(m.defaultSearchRadius(km),km);
+  for(const invalid of [undefined,null,0,25,200,-2,"20",NaN]) assert.equal(m.defaultSearchRadius(invalid),10);
+});

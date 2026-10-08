@@ -27,7 +27,7 @@ import { agreementSigning, displayedAgreementNote, type NoteEdit } from "@/lib/a
 import { parseDeposit } from "@/lib/marketplace";
 import { AgreementPhotos as AgreementPhotoPanel } from "@/components/agreement-photos";
 import { phasePhotos, photoVersion, type AgreementPhotos, type AgreementPhoto } from "@/lib/agreement-photos";
-import { type Place, type Profile, type Country, type ListingPlan, distanceKm, places,parseDailyPrice, money, dayCount, todayLocal, canCreateListing, listingLimit, PLUS_LISTING_LIMIT } from "@/lib/marketplace";
+import { SEARCH_RADII, defaultSearchRadius, type Place, type Profile, type Country, type ListingPlan, distanceKm, places,parseDailyPrice, money, dayCount, todayLocal, canCreateListing, listingLimit, PLUS_LISTING_LIMIT } from "@/lib/marketplace";
 import { compressListingImage, formatImageSize, MAX_LISTING_IMAGES, type CompressedListingImage } from "@/lib/image-compression";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -270,8 +270,8 @@ export default function HomePage() {
     loadCircleProfile(user.uid).then(cloud => {
       if (!active) return;
       if (cloud) {
-        const next = { name: cloud.name, email: user.email || cloud.email, phone: cloud.phone, street: cloud.street, place: cloud.place, taxAcknowledgement: cloud.taxAcknowledgement };
-        setProfile(next); setLang(cloud.preferredLanguage); setOrigin(cloud.place);setRadius("100"); setNewPlace(cloud.place); setNewCountry(cloud.place.country);
+        const next = { defaultRadiusKm: cloud.defaultRadiusKm, name: cloud.name, email: user.email || cloud.email, phone: cloud.phone, street: cloud.street, place: cloud.place, taxAcknowledgement: cloud.taxAcknowledgement };
+        setProfile(next); setLang(cloud.preferredLanguage); setOrigin(cloud.place);setRadius(String(defaultSearchRadius(cloud.defaultRadiusKm))); setNewPlace(cloud.place); setNewCountry(cloud.place.country);
         setListingPlan(cloud.subscriptionPlan === "plus" ? "plus" : "free");
       } else setTab("profile");
     }).catch(() => reportProfileError())
@@ -416,7 +416,7 @@ export default function HomePage() {
     if (!configured || !user) throw new Error(lang === "da" ? "Firebase er ikke konfigureret." : "Firebase är inte konfigurerat.");
     try { await saveCircleProfile(user, next, lang); }
     catch (cause) { const message = cause instanceof Error ? cause.message : (lang === "da" ? "Profilen kunne ikke gemmes. Prøv igen." : "Profilen kunde inte sparas. Försök igen."); toast.error(message); throw cause; }
-    setProfile(next); setOrigin(next.place); setNewPlace(next.place); setNewCountry(next.place.country);
+    setProfile(next); setRadius(String(defaultSearchRadius(next.defaultRadiusKm))); setOrigin(next.place); setNewPlace(next.place); setNewCountry(next.place.country);
     toast.success(lang === "da" ? "Profilen er gemt sikkert." : "Profilen har sparats säkert.");
   }
 
@@ -716,7 +716,7 @@ export default function HomePage() {
                 <div className="place-field"><label id="radius-label">Radius</label>
                   <Select value={radius} onValueChange={setRadius}>
                     <SelectTrigger aria-labelledby="radius-label" className="!h-12 w-full rounded-xl bg-white"><SelectValue /></SelectTrigger>
-                    <SelectContent>{["5","10","25","50","100","200"].map(k=><SelectItem key={k} value={k}>{k} km</SelectItem>)}<SelectItem value="all">{lang === "da" ? "Ingen afstandsgrænse" : "Ingen avståndsgräns"}</SelectItem></SelectContent>
+                    <SelectContent>{SEARCH_RADII.map(k=><SelectItem key={k} value={String(k)}>{k} km</SelectItem>)}<SelectItem value="all">{lang === "da" ? "Ingen afstandsgrænse" : "Ingen avståndsgräns"}</SelectItem></SelectContent>
                   </Select>
                 </div>
                 <div className="place-field"><label id="price-filter-label">{lang === "da" ? "Pris" : "Pris"}</label>
@@ -754,7 +754,7 @@ export default function HomePage() {
 
           {tab === "saved" && <div className="content-panel">{user && <SavedSearches lang={lang} prefs={prefs} filter={savedFilter} onChange={setPrefs} onApply={applySearch} items={listings} />}</div>}
           {tab === "wanted" && <div className="content-panel"><h1 className="sr-only">Efterlysning</h1><WantedBoard lang={lang} uid={user?.uid} origin={origin} radius={radius} items={listings} onLogin={()=>setAuthOpen(true)} onOpen={id=>{const item=listings.find(i=>i.id===id);if(item)setSelected(item);else toast.info(lang==="da"?"Annoncen er ikke længere tilgængelig.":"Annonsen är inte längre tillgänglig.");}} /></div>}
-          {tab === "map" && <div className="map-page"><h1 className="sr-only">{lang === "da" ? "Kort" : "Karta"}</h1>{profile ? <CommunityMap origin={profile.place} radiusKm={100} lang={lang} /> : <div className="content-panel"><p>{lang === "da" ? "Udfyld din profil for at se kortet med udgangspunkt i dit postnummer." : "Fyll i din profil för att se kartan med utgångspunkt i ditt postnummer."}</p><Button className="mt-4" onClick={()=>setTab("profile")}>{lang === "da" ? "Gå til konto" : "Gå till konto"}</Button></div>}</div>}
+          {tab === "map" && <div className="map-page"><h1 className="sr-only">{lang === "da" ? "Kort" : "Karta"}</h1>{profile ? <CommunityMap origin={profile.place} radiusKm={defaultSearchRadius(profile.defaultRadiusKm)} lang={lang} /> : <div className="content-panel"><p>{lang === "da" ? "Udfyld din profil for at se kortet med udgangspunkt i dit postnummer." : "Fyll i din profil för att se kartan med utgångspunkt i ditt postnummer."}</p><Button className="mt-4" onClick={()=>setTab("profile")}>{lang === "da" ? "Gå til konto" : "Gå till konto"}</Button></div>}</div>}
           {tab === "items" && <ItemsView lang={lang} profile={profile} listings={listings.filter(item => item.owned)} plan={listingPlan} onAdd={openAdd} onEdit={openEdit} onDelete={setPendingDelete} onCalendar={setCalendarItem} />}
           {tab === "requests" && <RequestsView t={t} loans={loans} lang={lang} userUid={user?.uid ?? ""} loading={agreementsLoading} loadError={agreementsError} direction={loanDirection} setDirection={setLoanDirection} archive={loanArchive} setArchive={setLoanArchive} onChat={setChatLoan} onAgreement={openAgreement} onDecision={(loan,action)=>setPendingDecision({loan,action})} />}
           {tab === "profile" && <ProfileView lang={lang} profile={profile} authenticatedEmail={user?.email || undefined} onSave={saveProfile}

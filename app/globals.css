@@ -223,7 +223,7 @@ button:focus-visible,a:focus-visible { outline:3px solid #819eb6; outline-offset
 .community-map-card>header h2 { margin-top:.15rem; font-size:1.15rem; font-weight:800; }
 .community-map-card>header p:not(.eyebrow) { max-width:620px; margin-top:.3rem; color:var(--veyro-muted); font-size:.82rem; line-height:1.5; }
 .community-map-card>header>span { display:inline-flex; flex:none; align-items:center; gap:.4rem; border-radius:999px; background:#e5f7f9; padding:.45rem .7rem; color:#006f88; font-size:.78rem; font-weight:800; }
-.community-map { position:relative; height:410px; overflow:hidden; border-block:1px solid var(--border); background:#dce8ec; cursor:grab; touch-action:none; user-select:none; }
+.community-map { position:relative; height:410px; overflow:hidden; border-block:1px solid var(--border); background:#dce8ec; cursor:grab; touch-action:pinch-zoom; user-select:none; }
 .community-map:active { cursor:grabbing; }
 .community-map:focus-visible { outline:3px solid var(--veyro-teal); outline-offset:-3px; }
 .community-map-wheel-help { padding:0 1.2rem .8rem; color:var(--veyro-muted); font-size:.8rem; line-height:1.5; }
@@ -401,7 +401,7 @@ button:focus-visible,a:focus-visible { outline:3px solid #819eb6; outline-offset
 .agreement-signatures section { display:flex; min-height:210px; flex-direction:column; align-items:stretch; gap:.35rem; border:1px dashed #aab2c1; border-radius:.55rem; padding:1rem; }
 .agreement-signatures section.is-signed { border-style:solid; border-color:#81b69f; background:#f3faf6; }
 .signature-pad { position:relative; margin-top:.35rem; border:1px solid #aeb9c5; border-radius:.45rem; overflow:hidden; background:#fff; }
-.signature-pad canvas { display:block; width:100%; height:120px; touch-action:none; }
+.signature-pad canvas { display:block; width:100%; height:120px; touch-action:pinch-zoom; }
 .signature-pad span { position:absolute; inset:auto .5rem .35rem; color:#788693; font-size:.7rem; pointer-events:none; }
 .signature-buttons { display:flex; justify-content:flex-end; gap:.45rem; }
 .signature-buttons button:last-child { background:#008EAC; color:white; }
