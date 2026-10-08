@@ -1,4 +1,5 @@
 "use client";
+import { COMPANY_IDENTITY } from "@/lib/company";
 
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { ListingReviews,ReviewForm } from "@/components/circle-reviews";
@@ -779,11 +780,11 @@ export default function HomePage() {
       </div>
 
       <footer className="site-footer">
-        <div className="footer-brand"><img src="/branding/veyro-systems-logo.png" alt="Veyro Systems" /><div><b>Veyro Circle</b><span>{lang === "da" ? "Et produkt fra Veyro Systems ApS" : "En produkt från Veyro Systems ApS"}</span></div></div>
+        <div className="footer-brand"><img src="/branding/veyro-systems-logo.png" alt="Veyro Systems" /><div><b>Veyro Circle</b><span>{lang === "da" ? `Et produkt fra ${COMPANY_IDENTITY}` : `En produkt från ${COMPANY_IDENTITY}`}</span></div></div>
         <nav aria-label="Juridisk information">
           <a href="/legal#privacy">{lang === "da" ? "Privatliv og GDPR" : "Integritet och GDPR"}</a><a href="/legal#terms">{lang === "da" ? "Handelsbetingelser" : "Köpvillkor"}</a><a href="/legal#cookies">Cookies</a><a href="/legal#complaints">{lang === "da" ? "Klager" : "Klagomål"}</a><a href="/legal#safety">{lang === "da" ? "Sikkerhed og ansvar" : "Säkerhet och ansvar"}</a>
         </nav>
-        <div className="footer-meta"><span>© {new Date().getFullYear()} Veyro Systems ApS</span><small>{lang === "da" ? "Postområder og omtrentlige koordinater:" : "Postområden och ungefärliga koordinater:"} <a href="https://www.geonames.org/" target="_blank" rel="noreferrer">GeoNames</a> · <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer">CC BY 4.0</a></small></div>
+        <div className="footer-meta"><span>© {new Date().getFullYear()} {COMPANY_IDENTITY}</span><small>{lang === "da" ? "Postområder og omtrentlige koordinater:" : "Postområden och ungefärliga koordinater:"} <a href="https://www.geonames.org/" target="_blank" rel="noreferrer">GeoNames</a> · <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer">CC BY 4.0</a></small></div>
       </footer>
       <nav className="mobile-nav" aria-label="Mobilmenu">
         <MobileNav icon={Home} label={t.navHome} active={tab === "home" && !onlyFavorites} onClick={openHome} />
@@ -868,7 +869,7 @@ export default function HomePage() {
           <div className="print-agreement">
             <p className="agreement-lifecycle-status">{stageLabels[lang][agreementStage(agreementLoan)]}</p>
             {agreementStage(agreementLoan) === "requested" && <p className="no-print">{lang === "da" ? "Ejeren skal først godkende forespørgslen under Mine lån. Derefter åbnes underskrifterne." : "Ägaren måste först godkänna förfrågan under Mina lån. Därefter öppnas signering."}</p>}
-            <DialogHeader className="agreement-header"><p className="eyebrow">Veyro Circle · Ticket {agreementLoan.id}</p><DialogTitle className="text-2xl font-bold">{lang === "da" ? "Leje- og låneaftale" : "Hyres- och låneavtal"}</DialogTitle><DialogDescription>{lang === "da" ? "Automatisk aftale mellem ejeren og låneren" : "Automatiskt avtal mellan ägaren och låntagaren"}</DialogDescription></DialogHeader>
+            <DialogHeader className="agreement-header"><p className="eyebrow">Veyro Circle · Ticket {agreementLoan.id}</p><DialogTitle className="text-2xl font-bold">{lang === "da" ? "Leje- og låneaftale" : "Hyres- och låneavtal"}</DialogTitle><DialogDescription>{lang === "da" ? "Automatisk aftale mellem ejeren og låneren" : "Automatiskt avtal mellan ägaren och låntagaren"}<br />{lang === "da" ? "Platform:" : "Plattform:"} {COMPANY_IDENTITY}</DialogDescription></DialogHeader>
             {agreementStage(agreementLoan)==="requested" && <p className="contact-privacy-note">{lang === "da" ? "Adresse og telefonnummer bliver først synlige, når ejeren har godkendt forespørgslen." : "Adress och telefonnummer visas först när ägaren har godkänt förfrågan."}</p>}
             <div className="agreement-parties"><AgreementParty title={lang === "da" ? "Udlejer / ejer" : "Uthyrare / ägare"} name={agreementLoan.item.owner} street={agreementLoan.item.ownerStreet} postcode={agreementLoan.item.place.postcode} city={agreementLoan.item.place.city} phone={agreementLoan.item.ownerPhone} /><AgreementParty title={lang === "da" ? "Låner / lejer" : "Låntagare / hyrestagare"} name={agreementLoan.borrower.name} street={agreementLoan.borrower.street} postcode={agreementLoan.borrower.place.postcode} city={agreementLoan.borrower.place.city} phone={agreementLoan.borrower.phone} /></div>
             <dl className="agreement-facts"><div><dt>{lang === "da" ? "Genstand" : "Föremål"}</dt><dd>{agreementLoan.item.name}</dd></div><div><dt>{lang === "da" ? "Periode" : "Period"}</dt><dd>{agreementLoan.from} {agreementLoan.pickupTime} – {agreementLoan.to} {agreementLoan.returnTime} ({agreementLoan.days} {lang === "da" ? "dage" : "dagar"})</dd></div><div><dt>{lang === "da" ? "Lejepris" : "Hyra"}</dt><dd>{agreementLoan.total ? money(agreementLoan.total, agreementLoan.item.country, lang) : t.free}</dd></div><div><dt>{lang === "da" ? "Depositum" : "Deposition"}</dt><dd>{agreementLoan.deposit ? money(agreementLoan.deposit, agreementLoan.item.country, lang) : (lang === "da" ? "Intet aftalt" : "Ingen avtalad")}</dd></div></dl>
