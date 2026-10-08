@@ -743,3 +743,17 @@ button:focus-visible,a:focus-visible { outline:3px solid #819eb6; outline-offset
 @media (min-width:1280px) {
   .app-main-grid { grid-template-columns:200px minmax(0,1fr) 240px; }
 }
+
+/* Keep every mobile destination visible without horizontal scrolling. */
+@media (max-width:1023px) {
+  .mobile-nav { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); align-items:stretch; gap:2px 4px; overflow:visible; padding:6px max(6px,env(safe-area-inset-right)) max(6px,env(safe-area-inset-bottom)) max(6px,env(safe-area-inset-left)); }
+  .mobile-nav-item { min-width:0; width:100%; min-height:52px; padding:4px 2px; justify-content:center; gap:3px; border-radius:6px; }
+  .mobile-nav-item small { max-width:100%; font-size:11px; line-height:1.2; white-space:normal; overflow-wrap:anywhere; overflow:visible; text-overflow:clip; }
+  .mobile-nav-item svg { width:20px; height:20px; }
+  .mobile-nav-item.active { background:#e2f5f7; }
+  .site-footer { padding-bottom:calc(155px + env(safe-area-inset-bottom)); }
+}
+@media (min-width:768px) and (max-width:1023px) {
+  .mobile-nav { grid-template-columns:repeat(8,minmax(0,1fr)); }
+  .site-footer { padding-bottom:calc(95px + env(safe-area-inset-bottom)); }
+}
