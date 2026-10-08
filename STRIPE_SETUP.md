@@ -2,6 +2,8 @@
 
 Veyro Circle bruger Stripe Checkout til Circle Plus-abonnementer. Det er almindelig Stripe Billing. Stripe Connect skal først tilføjes, hvis Circle senere skal formidle betaling mellem udlejer og lejer.
 
+Virksomhed: **Veyro Systems ApS · CVR 46834941**. Virksomhedsoplysninger på Stripe-kontoen og fakturaer skal opdateres særskilt i Stripe; kodeændringer opdaterer ikke kontoens registrerede oplysninger.
+
 ## Stripe Dashboard
 
 1. Opret produktet **Veyro Circle Plus**.
